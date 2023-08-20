@@ -127,14 +127,14 @@ def get_valid_positive_integer_input():
     while True:
         user_input = input("Enter the amount of patients to create:")
         try:
-            num = int(user_input)
-            if num >= 0:
-                return num
+            check_number: int = int(user_input)
+            if 0 <= check_number <= 600000:
+                return check_number
             else:
                 print("Please enter a non-negative number.")
         except ValueError:
             print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
 
 
-num = get_valid_positive_integer_input()
-run_synthea(num)
+number_of_patients = get_valid_positive_integer_input()
+run_synthea(number_of_patients)
