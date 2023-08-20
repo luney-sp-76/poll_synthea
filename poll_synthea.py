@@ -131,7 +131,7 @@ def get_valid_positive_integer_input():
             if 0 <= check_number <= 60000:
                 return check_number
             else:
-                print("Please enter a non-negative number.")
+                print("Please enter a non-negative number or a number no greater than 60000.")
         except ValueError:
             print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
 
