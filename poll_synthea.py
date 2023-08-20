@@ -120,6 +120,7 @@ def run_synthea(x):
     print("Done! ✓ ")
 
 
+# Check the validity of the users patient number request to be numeric digit and non-alphabetical and not a negative number
 def get_valid_positive_integer_input():
     while True:
         user_input = input("Enter the amount of patients to create:")
