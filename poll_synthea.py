@@ -68,6 +68,9 @@ def run_synthea(x):
                     os.remove(files)
                     temp_count -= 1
 
+    # Count the number of files already in the Work folder before this run
+    existing_files_count = len(list(work_fhir_folder_path.glob("*.json")))
+
     # Copy contents of temporary fhir folder to Work fhir folder
     if os.path.exists(output_fhir_folder_path):
         for item in os.listdir(output_fhir_folder_path):
@@ -105,7 +108,9 @@ def run_synthea(x):
         print("incomplete transfer missing ", temp_count - work_count, "files")
     else:
         if work_count > temp_count:
-            print(x, " new files added to work")
+            # Calculate the difference between the number of files in Work before and after this run
+            new_files_added = work_count - existing_files_count
+            print(new_files_added, " new files added to work")
 
     print("Done!")
 
