@@ -1,3 +1,5 @@
+import firebase_admin
+from firebase_admin import credentials, firestore
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
 from datetime import datetime, date
@@ -70,6 +72,12 @@ def parse_fhir_message(fhir_message):
     return patient_info
 
 
+# Initialize Firebase Admin SDK with your credentials
+cred = credentials.Certificate("firebase/pollsynthea-firebase-adminsdk-j01m1-bb3600d47d.json")
+firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+
 # Iterate through FHIR JSON files in the work folder
 for file in work_folder_path.glob("*.json"):
     with open(file, "r") as f:
@@ -90,3 +98,8 @@ for file in work_folder_path.glob("*.json"):
                 "age": patient_info.age
             }
             print(patient_json)  # Print the JSON FHIR message
+
+# Add patient information to Firestore
+            doc_ref = db.collection("full_fhir").document(patient_info.id)
+            doc_ref.set(patient_json)
+            print("Patient information added to Firestore:", patient_info.id)
