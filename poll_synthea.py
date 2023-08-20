@@ -64,7 +64,10 @@ def run_synthea(x):
                 pass
             else:
                 while temp_count > x:
-                    os.remove(files)
+                    if not files.exists():
+                        pass
+                    else:
+                        os.remove(files)
                     temp_count -= 1
 
     # Count the number of files already in the Work folder before this run
