@@ -47,7 +47,7 @@ def run_synthea(x):
 
     # Check if Temp_Work/fhir folder exists
     if os.path.exists(output_fhir_folder_path):
-        print("checking synthea-ouput completed successfully.")
+        print("checking synthea-ouput completed successfully...")
 
     # Count and keep a record of number of json files in output
     for file in output_fhir_folder_path.glob("*.json"):
@@ -56,10 +56,10 @@ def run_synthea(x):
         else:
             temp_count += 1
 
-    print("output from synthea = ", temp_count)
+    print("output from synthea completed ✓ \n total output = ", temp_count)
 
     # remove extra patient files if generated
-    if temp_count > x:
+    if temp_count > x != 1:
         for files in output_fhir_folder_path.glob("*.json"):
             if not files.exists():
                 pass
@@ -77,14 +77,14 @@ def run_synthea(x):
             source_path = os.path.join(output_fhir_folder_path, item)
             dest_path = os.path.join(work_fhir_folder_path, item)
             shutil.copy2(source_path, dest_path)
-        print("Copied to Work folder successfully.")
+        print("Copied to Work folder successfully ✓")
 
         # Clean up temporary fhir folder
         shutil.rmtree(os.path.join(output_fhir_folder_path))
-        print("Transferred files to Work folder successfully.")
+        print("Transferred files to Work folder successfully ✓")
     else:
-        print("No files found in Temp_Work/fhir.")
-        print("Temp_Work/fhir folder not found.")
+        print("No files found in Temp_Work/fhir x")
+        print("Temp_Work/fhir folder not found x")
 
     # Clean up output fhir folder (remove only files)
     if os.path.exists(output_fhir_folder_path):
@@ -105,20 +105,33 @@ def run_synthea(x):
     print("files in Work  = ", work_count)
 
     if work_count < temp_count:
-        print("incomplete transfer missing ", temp_count - work_count, "files")
+        print("incomplete transfer missing ", temp_count - work_count, "files x")
     else:
         if work_count > temp_count:
             # Calculate the difference between the number of files in Work before and after this run
             new_files_added = work_count - existing_files_count
-            print(new_files_added, " new files added to work")
+            print(new_files_added, " new files added to work ✓ ")
             if new_files_added > x:
                 print(new_files_added - x, " files extra than requested have been added")
             else:
                 if x > new_files_added:
                     print(x - new_files_added, " files less than requested have been added")
 
-    print("Done!")
+    print("Done! ✓ ")
 
 
-num = int(input("Enter the amount of patients to create:"))
+def get_valid_positive_integer_input():
+    while True:
+        user_input = input("Enter the amount of patients to create:")
+        try:
+            num = int(user_input)
+            if num >= 0:
+                return num
+            else:
+                print("Please enter a non-negative number.")
+        except ValueError:
+            print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
+
+
+num = get_valid_positive_integer_input()
 run_synthea(num)
