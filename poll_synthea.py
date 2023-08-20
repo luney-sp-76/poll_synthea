@@ -136,5 +136,6 @@ def get_valid_positive_integer_input():
             print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
 
 
-number_of_patients = get_valid_positive_integer_input()
-run_synthea(number_of_patients)
+def call_for_patients():
+    number_of_patients = get_valid_positive_integer_input()
+    run_synthea(number_of_patients)
