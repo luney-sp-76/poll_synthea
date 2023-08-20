@@ -111,6 +111,11 @@ def run_synthea(x):
             # Calculate the difference between the number of files in Work before and after this run
             new_files_added = work_count - existing_files_count
             print(new_files_added, " new files added to work")
+            if new_files_added > x:
+                print(new_files_added - x, " files extra than requested have been added")
+            else:
+                if x > new_files_added:
+                    print(x - new_files_added, " files less than requested have been added")
 
     print("Done!")
 
