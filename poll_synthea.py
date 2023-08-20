@@ -105,7 +105,7 @@ def run_synthea(x):
         print("incomplete transfer missing ", temp_count - work_count, "files")
     else:
         if work_count > temp_count:
-            print(work_count - temp_count, " new files added to work")
+            print(x, " new files added to work")
 
     print("Done!")
 
