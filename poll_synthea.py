@@ -128,7 +128,7 @@ def get_valid_positive_integer_input():
         user_input = input("Enter the amount of patients to create:")
         try:
             check_number: int = int(user_input)
-            if 0 <= check_number <= 600000:
+            if 0 <= check_number <= 60000:
                 return check_number
             else:
                 print("Please enter a non-negative number.")
