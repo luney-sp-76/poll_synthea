@@ -84,22 +84,25 @@ for file in work_folder_path.glob("*.json"):
         fhir_message = f.read()
         patient_info = parse_fhir_message(fhir_message)
         if patient_info:
-            patient_json = {
-                "id": patient_info.id,
-                "birth_date": patient_info.birth_date.isoformat(),
-                "gender": patient_info.gender,
-                "ssn": patient_info.ssn,
-                "first_name": patient_info.first_name,
-                "last_name": patient_info.last_name,
-                "city": patient_info.city,
-                "state": patient_info.state,
-                "country": patient_info.country,
-                "postal_code": patient_info.postal_code,
-                "age": patient_info.age
-            }
-            print(patient_json)  # Print the JSON FHIR message
-
-# Add patient information to Firestore
-            doc_ref = db.collection("full_fhir").document(patient_info.id)
-            doc_ref.set(patient_json)
-            print("Patient information added to Firestore:", patient_info.id)
+            patient_id = patient_info.id
+            patient_ref = db.collection("full_fhir").document(patient_id)
+            # Check if patient already exists
+            if patient_ref.get().exists:
+                print(f"Patient with ID {patient_id} already exists in Firestore. Skipping.")
+            else:
+                # Add patient to Firestore
+                patient_data = {
+                    "id": patient_info.id,
+                    "birth_date": patient_info.birth_date.isoformat(),
+                    "gender": patient_info.gender,
+                    "ssn": patient_info.ssn,
+                    "first_name": patient_info.first_name,
+                    "last_name": patient_info.last_name,
+                    "city": patient_info.city,
+                    "state": patient_info.state,
+                    "country": patient_info.country,
+                    "postal_code": patient_info.postal_code,
+                    "age": patient_info.age
+                }
+                patient_ref.set(patient_data)
+                print(f"Added patient with ID {patient_id} to Firestore.")
