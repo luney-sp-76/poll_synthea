@@ -1,6 +1,6 @@
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 import poll_synthea
 
@@ -22,11 +22,12 @@ class PatientInfo:
         self.postal_code = postal_code
         self.age = age
 
+
 def calculate_age(birth_date):
-    birth_date = datetime.strptime(birth_date, "%Y-%m-%d")
-    today = datetime.today()
+    today = date.today()
     age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
     return age
+
 
 poll_synthea.call_for_patients()
 
@@ -47,11 +48,16 @@ def parse_fhir_message(fhir_message):
         if isinstance(resource, Patient):
             birth_date = resource.birthDate
             age = calculate_age(birth_date)
+            ssn = None
+            for identifier in resource.identifier:
+                if identifier.system == "http://hl7.org/fhir/sid/us-ssn":
+                    ssn = identifier.value
+                    break
             patient_info = PatientInfo(
                 id=resource.id,
                 birth_date=birth_date,
                 gender=resource.gender,
-                ssn=resource.identifier[0].value if resource.identifier else None,
+                ssn=ssn,
                 first_name=resource.name[0].given[0],
                 last_name=resource.name[0].family,
                 city=resource.address[0].city,
@@ -72,7 +78,7 @@ for file in work_folder_path.glob("*.json"):
         if patient_info:
             patient_json = {
                 "id": patient_info.id,
-                "birth_date": patient_info.birth_date,
+                "birth_date": patient_info.birth_date.isoformat(),
                 "gender": patient_info.gender,
                 "ssn": patient_info.ssn,
                 "first_name": patient_info.first_name,
