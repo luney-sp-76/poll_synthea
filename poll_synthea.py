@@ -142,3 +142,6 @@ def get_valid_positive_integer_input():
 def call_for_patients():
     number_of_patients = get_valid_positive_integer_input()
     run_synthea(number_of_patients)
+
+
+#call_for_patients()
