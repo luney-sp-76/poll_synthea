@@ -129,14 +129,17 @@ numeric digit and non-alphabetical and not a negative number'''
 def get_valid_positive_integer_input():
     while True:
         user_input = input("Enter the amount of patients to create:")
-        try:
-            check_number: int = int(user_input)
-            if 0 <= check_number <= 60000:
-                return check_number
-            else:
-                print("Please enter a non-negative number or a number no greater than 60000.")
-        except ValueError:
-            print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
+        if user_input == 'max' or 'MAX' or 'Max':
+            return 60000
+        else:
+            try:
+                check_number: int = int(user_input)
+                if 0 <= check_number <= 60000:
+                    return check_number
+                else:
+                    print("Please enter a non-negative number or a number no greater than 60000.")
+            except ValueError:
+                print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
 
 
 def call_for_patients():
