@@ -26,6 +26,7 @@ def run_synthea(x):
         "--exporter.fhir.export=true",
         "--exporter.fhir.transaction_bundle=true",
         "--exporter.years_of_history=0",
+        "--exporter.only_alive_patients=true",
         "--exporter.fhir.use_uuid_filenames=false",
         "--exporter.hospital.fhir.export=false",
         "--exporter.practitioner.fhir.export=false",
