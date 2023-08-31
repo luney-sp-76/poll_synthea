@@ -1,3 +1,4 @@
+import glob
 import firebase_admin
 from firebase_admin import credentials, firestore
 from fhir.resources.R4B.bundle import Bundle
@@ -73,8 +74,13 @@ def parse_fhir_message(fhir_message):
 
 
 # Initialize Firebase Admin SDK with your credentials
-cred = credentials.Certificate("firebase/pollsynthea-firebase-adminsdk-j01m1-bb3600d47d.json")
-firebase_admin.initialize_app(cred)
+json_file = glob.glob("firebase/*.json")[0]
+if not json_file:
+    print("No Firebase credentials file found. Exiting.")
+    exit(1) # Exit with error code 1
+else:
+    cred = credentials.Certificate(json_file)
+    firebase_admin.initialize_app(cred)
 
 db = firestore.client()
 
