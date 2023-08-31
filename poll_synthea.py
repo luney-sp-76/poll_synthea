@@ -32,7 +32,7 @@ def run_synthea(x):
         "--exporter.fhir.use_shr_extensions=false",
         "--exporter.fhir.use_us_core_ig=false",
         "--exporter.fhir.use_us_core_r4_ig=false",
-        "--exporter.fhir.use_synthea_extensions=true"
+        "--exporter.fhir.use_synthea_extensions=false"
 
     ]
     temp_count: int = 0
@@ -129,7 +129,7 @@ numeric digit and non-alphabetical and not a negative number'''
 def get_valid_positive_integer_input():
     while True:
         user_input = input("Enter the amount of patients to create:")
-        if user_input == 'max' or 'MAX' or 'Max':
+        if user_input == 'max' or user_input == 'MAX' or user_input == 'Max':
             return 60000
         else:
             try:
