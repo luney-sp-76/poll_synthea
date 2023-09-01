@@ -13,6 +13,7 @@ from hl7apy import core
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
+hl7_folder_path = BASE_DIR / "HL7_v2"
 MESSAGE_CONTROL_ID = 1000
 
 
@@ -201,7 +202,7 @@ def main():
 
 
 def save_hl7_message_to_file(hl7_message, patient_id):
-    hl7_file_path = work_folder_path / f"{patient_id}.hl7"
+    hl7_file_path = hl7_folder_path / f"{patient_id}.hl7"
     with open(hl7_file_path, "w") as hl7_file:
         hl7_file.write(str(hl7_message.msh.value) + "\r")
         hl7_file.write(str(hl7_message.pid.value) + "\r")
