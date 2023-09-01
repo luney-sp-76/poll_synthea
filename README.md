@@ -1,17 +1,21 @@
 # poll_synthea
 Dummy Patient data 
 
-This is a simple FHIR patient generation tool that works with the Synthea Project https://github.com/synthetichealth/synthea
+This is a simple FHIR patient/ HL7 v2 generation tool that works with the Synthea Project https://github.com/synthetichealth/synthea
 
 ## running the whole script
 
 To run the script, you will need to add the synthea.jar file to the project root and install Java JDK 11 or above on your local machine
 
-You can run the script by navigating to the project directory and running  python3 parse_fhir.py
+You can run the script by navigating to the project directory and running  ```python main.py```
 
 The script is set to ask for the number of patients you would like to generate. If you have already generated patients and do not want to add more, you can enter 0.
 
 The maximum number of patients is 60,000, although your storage may suffer.
+
+This will generate the patients and upload them to a Firestore database. The database is set to the default project in the firebase folder. You can change this by updating the code in main.py to point to your project.
+
+The script will also generate a basic HL7 v2 messages OMLO01 for each patient and adds them to the HL7_v2 folder. You can change this by updating the code in main.py to point to your project.
 
 # Prerequisites
 The program assumes you have a Firestore database with a collection called full_fhir and the following document attributes:
