@@ -1,5 +1,6 @@
 # Ignore the contents of the Work folder
 /Work/*
+/HL7_v2/*
 #ignore the synthea.jar file
 synthea-with-dependencies.jar
 
