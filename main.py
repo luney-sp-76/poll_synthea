@@ -10,7 +10,10 @@ from fhir.resources.R4B.patient import Patient
 from datetime import date
 from pathlib import Path
 from hl7apy.core import Message
-from hl7apy.consts import VALIDATION_LEVEL
+from hl7apy import core
+import random
+import sys
+import os
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -19,10 +22,17 @@ MESSAGE_CONTROL_ID = 1000
 
 
 def create_orm_message(patient_info, messageType):
+    global BASE_DIR
     global MESSAGE_CONTROL_ID
-    date = date.today().strftime("%Y%m%d%H%M%S")
+    current_date = date.today()
+  
     # Create empty HL7 message
-    hl7 = Message(messageType, VALIDATION_LEVEL.TOLERANT)   
+    try:
+        hl7 = core.Message(messageType, version="2.5")
+    except Exception as e:
+        hl7 = None
+        print(f"An error occurred while initializing the HL7 Message: {e}")
+        print(f"messageType: {messageType}")  
 
      # Initialize msh to None
     msh = None
@@ -33,10 +43,9 @@ def create_orm_message(patient_info, messageType):
         hl7.msh.msh_4 = "MHS"  # Sending Facility
         hl7.msh.msh_5 = "HIS"  # Receiving Application
         hl7.msh.msh_6 = "HOSP"  # Receiving Facility
-        hl7.msh.msh_7 = date.today().strftime("%Y%m%d%H%M%S")  # Date/Time of Message
+        hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M%S")  # Date/Time of Message
         hl7.msh.msh_9 = "ORU^R01"  # Message Type
-        hl7.msh.msh_10 = str(MESSAGE_CONTROL_ID + date)  # Message Control ID
-        MESSAGE_CONTROL_ID += 1
+        hl7.msh.msh_10 = str(MESSAGE_CONTROL_ID)  # Message Control ID
         hl7.msh.msh_11 = "T"  # Processing ID
         hl7.msh.msh_12 = "2.5"  # Version ID
         hl7.msh.msh_15 = "AL"  # Accept Acknowledgment Type
@@ -44,20 +53,25 @@ def create_orm_message(patient_info, messageType):
     except Exception as ae:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
-        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}", date.today().strftime("%Y%m%d%H%M%S"))
+        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())
+        MESSAGE_CONTROL_ID += 1
 
    # Add PID Segment
     try:
        hl7.pid.pid_1 = "1"
        # PID 3 defaults to P
        #hl7.pid.pid_3 = patient_info.id
-       hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}^^^{patient_info.suffix}"
-       hl7.pid.pid_7 = patient_info.birth_date.isoformat()
+       hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
+       hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
        hl7.pid.pid_8 = patient_info.gender[0].upper()
        hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
+       visitNo = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)])
+       visitInstitution = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
+                           + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
+       
        #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
-       hl7.pid.pid_18 = f"{patient_info.account_number}^{patient_info.account_name}^^{patient_info.account_type}"
+       hl7.pid.pid_18 = visitNo + "^" + visitInstitution
        #hl7.pid.pid_19 = patient_info.ssn
     except Exception as ae:
         print("An AssertionError occurred:", ae)
@@ -92,12 +106,13 @@ def create_orm_message(patient_info, messageType):
 
 
 class PatientInfo:
-    def __init__(self, id, birth_date, gender, ssn, first_name, last_name, city, state, country, postal_code, age):
+    def __init__(self, id, birth_date, gender, ssn, first_name, middle_name, last_name, city, state, country, postal_code, age):
         self.id = id
         self.birth_date = birth_date
         self.gender = gender
         self.ssn = ssn
         self.first_name = first_name
+        self.middle_name = middle_name
         self.last_name = last_name
         self.city = city
         self.state = state
@@ -139,6 +154,7 @@ def parse_fhir_message(fhir_message):
                 gender=resource.gender,
                 ssn=ssn,
                 first_name=resource.name[0].given[0],
+                middle_name=resource.name[0].given[1],
                 last_name=resource.name[0].family,
                 city=resource.address[0].city,
                 state=resource.address[0].state,
@@ -150,14 +166,16 @@ def parse_fhir_message(fhir_message):
     return patient_info
 
 def initialize_firestore() -> firestore.client:
+    global BASE_DIR
     """Initialize Firestore client and return it."""
-    json_file = glob.glob("firebase/*.json")[0]
-    if not json_file:
-        logging.error("No Firebase credentials file found. Exiting.")
+    json_file = Path("firebase/pollsynthea-firebase-adminsdk-j01m1-f9a1592562.json")
+    if json_file:
+        cred = credentials.Certificate(json_file)
+        firebase_admin.initialize_app(cred)
+        return firestore.client()
+    else:
+        print("No Firebase credentials found. Exiting.")
         exit(1)
-    cred = credentials.Certificate(json_file)
-    firebase_admin.initialize_app(cred)
-    return firestore.client()
 
 def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
     """Save patient info to Firestore."""
@@ -184,7 +202,7 @@ def main():
                 fhir_message = f.read()
                 patient_info = parse_fhir_message(fhir_message)
                 if patient_info:
-                    hl7_message = create_orm_message(patient_info, "ORU^R01")
+                    hl7_message = create_orm_message(patient_info, "ORU_R01")
                     print("Generated HL7 message:", str(hl7_message))
                     save_hl7_message_to_file(hl7_message, patient_info.id)
                     patient_id = patient_info.id
