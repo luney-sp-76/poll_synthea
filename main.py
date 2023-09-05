@@ -45,9 +45,9 @@ def create_orm_message(patient_info, messageType):
     # Add MSH Segment
     try:
         hl7.msh.msh_3 = "ULTRA"  # Sending Application
-        hl7.msh.msh_4 = "MHS"  # Sending Facility
-        hl7.msh.msh_5 = "HIS"  # Receiving Application
-        hl7.msh.msh_6 = "HOSP"  # Receiving Facility
+        hl7.msh.msh_4 = "MATER"  # Sending Facility
+        hl7.msh.msh_5 = "PAMS"  # Receiving Application
+        hl7.msh.msh_6 = "PAMS"  # Receiving Facility
         hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M%S")  # Date/Time of Message
         hl7.msh.msh_9 = "ORU^R01"  # Message Type
         hl7.msh.msh_10 = control_id  # Message Control ID
@@ -88,8 +88,8 @@ def create_orm_message(patient_info, messageType):
     # Add ORC Segment for the Order (dummy data for example)
     try:
         hl7.orc.orc_1 = "O"  # New Order
-        hl7.orc.orc_2 = "1234"  # Some dummy order ID
-        hl7.orc.orc_3 = "1234"  # Some dummy placer order ID
+        hl7.orc.orc_2 = "1234"  # Some dummy placer order ID up to 75 characters
+        hl7.orc.orc_3 = "1^^23^^4"  # Some dummy filler order ID up to 75 characters
     except Exception as ae:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
