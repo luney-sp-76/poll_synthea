@@ -8,6 +8,7 @@ from firebase_admin import credentials, firestore
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
 from datetime import date
+import datetime
 from pathlib import Path
 from hl7apy.core import Message
 from hl7apy import core
@@ -18,13 +19,17 @@ import os
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
-MESSAGE_CONTROL_ID = 1000
+
 
 
 def create_orm_message(patient_info, messageType):
     global BASE_DIR
-    global MESSAGE_CONTROL_ID
     current_date = date.today()
+    current_date_time = datetime.datetime.now()
+
+    formatted_date_minutes_milliseconds = current_date_time.strftime("%Y%m%d%H%M%S.%f")
+    control_id = formatted_date_minutes_milliseconds.replace(".", "")
+    
   
     # Create empty HL7 message
     try:
@@ -45,7 +50,7 @@ def create_orm_message(patient_info, messageType):
         hl7.msh.msh_6 = "HOSP"  # Receiving Facility
         hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M%S")  # Date/Time of Message
         hl7.msh.msh_9 = "ORU^R01"  # Message Type
-        hl7.msh.msh_10 = str(MESSAGE_CONTROL_ID)  # Message Control ID
+        hl7.msh.msh_10 = control_id  # Message Control ID
         hl7.msh.msh_11 = "T"  # Processing ID
         hl7.msh.msh_12 = "2.5"  # Version ID
         hl7.msh.msh_15 = "AL"  # Accept Acknowledgment Type
@@ -227,6 +232,7 @@ def main():
                         }
                         patient_ref.set(patient_data)
                         print(f"Added patient with ID {patient_id} to Firestore.")
+                        
                 else:
                     print("no patient info")
     except Exception as e:
