@@ -245,6 +245,7 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
 
 
 def main():
+    #TODO: Add a menu to choose the message type with validation for choices
     # Initialize Firebase Admin SDK with your credentials
     db = initialize_firestore()
     print("1. ORU_R01\n")
