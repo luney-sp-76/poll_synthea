@@ -144,7 +144,20 @@ def create_message(patient_info, messageType):
     
     # Add OBR Segment for the Order details (dummy data for example)
     try:
-        hl7.obr.obr_4 = "TestCode"  # some test code
+        hl7.obr.obr_1 = "1"  # Set ID
+        hl7.obr.obr_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
+        hl7.obr.obr_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
+        hl7.obr.obr_4 = "TestCode"  # some test code hl7.Orders.ext_code 
+        #request_date.strftime("%Y%m%d%H%M%S") Requested Date/Time lab.Request.date_refer 
+        hl7.obr.obr_6 = ""
+        #Ordering Provider 2 component 1 component 1 lab.Resultp_extra.doc_ordering  Default 'WACON'2 component 1 lab.Request.doctor Default 'TEST'
+        hl7.obr.obr_16 = "WACON^TEST"
+        #Diagnostic Service ID  2 components 1^ 2 component 2 lab.Request.lab 
+        hl7.obr.obr_24 = ""
+        #Quantity/Timing 6 component s 6 components1 component 4 lab.Request.date_service,lab.Request.time_service2 component 4 lab.Request.date_coln,lab.Request.time_coln 3 component 6 lab.Request.priority_coln 
+        hl7.obr.obr_27 = ""
+
+
     except:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
