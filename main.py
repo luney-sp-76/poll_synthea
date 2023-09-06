@@ -56,8 +56,75 @@ def create_obr_time():
 
     return random_date.strftime("%Y%m%d%H%M")
 
+# Creates a PID segment for the HL7 message requires a patient_info object and the hl7 message
+def create_pid(patient_info, hl7):
+    try:
+       hl7.pid.pid_1 = "1"
+       # PID 3 defaults to P
+       #hl7.pid.pid_3 = patient_info.id
+       hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
+       hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
+       hl7.pid.pid_8 = patient_info.gender[0].upper()
+       hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
+       visitNo = create_visit_number()
+       visitInstitution = create_visit_instiution()
+       #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
+       hl7.pid.pid_18 = visitNo + "^" + visitInstitution
+       #hl7.pid.pid_19 = patient_info.ssn
+    except Exception as ae:
+        print("An AssertionError occurred:", ae)
+        print(f"Could not create MSH Segment: {ae}")
+        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
+        logging.error(traceback.format_exc())
 
-# Creates a HL7 message
+    return hl7
+
+# Creates a OBR segment for the HL7 message requires a patient_info object and the hl7 message
+def create_obr(patient_info, placer_order_num, filler_order_id, hl7):
+    try:
+        request_date = create_obr_time()
+        observation_date = create_obr_time()
+        quantity_timing = create_obr_time()
+
+        hl7.obr.obr_1 = "1"  # Set ID
+        hl7.obr.obr_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
+        hl7.obr.obr_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
+        hl7.obr.obr_4 = patient_info.id  # some test code hl7.Orders.ext_code 
+        #Requested Date/Time lab.Request.date_refer 
+        hl7.obr.obr_6 = request_date
+        # Observation Date/Time lab.Resultp_extra.doc_date
+        hl7.obr.obr_7 = observation_date  
+        #Ordering Provider 2 component 1 component 1 lab.Resultp_extra.doc_ordering  Default 'WACON'2 component 1 lab.Request.doctor Default 'TEST'
+        hl7.obr.obr_16 = "WACON^TEST"
+        #Diagnostic Service ID  2 components 1^2 component 2 lab.Request.lab 
+        hl7.obr.obr_24 = "BI^UHC"
+        #Quantity/Timing 6 component s 6 components1 component 4 lab.Request.date_service,lab.Request.time_service2 component 4 lab.Request.date_coln,lab.Request.time_coln 3 component 6 lab.Request.priority_coln 
+        hl7.obr.obr_27 = f"^^^{quantity_timing}^^E"
+    except:
+        print("An AssertionError occurred:", ae)
+        print(f"Could not create MSH Segment: {ae}")
+        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
+        logging.error(traceback.format_exc())
+
+    return hl7
+
+
+# creates a ORC segment for the HL7 message requires a patient_info object and the hl7 message
+def create_orc(hl7, placer_order_num, filler_order_id):
+    try:
+        hl7.orc.orc_1 = "O"  # New Order
+        hl7.orc.orc_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
+        hl7.orc.orc_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
+    except Exception as ae:
+        print("An AssertionError occurred:", ae)
+        print(f"Could not create MSH Segment: {ae}")
+        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
+        logging.error(traceback.format_exc())
+
+    return hl7
+
+
+# Creates a HL7 message includes the MSH segment then options based on message type
 def create_message(patient_info, messageType):
     global BASE_DIR
     current_date = date.today()
@@ -77,7 +144,6 @@ def create_message(patient_info, messageType):
         
 
 #TODO: Make a call to each of the functions below to create the segments depending on the message type 
-#TODO: Create a seperate function for MSH SEGMENT
 
      # Initialize msh to None
     msh = None
@@ -105,73 +171,22 @@ def create_message(patient_info, messageType):
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())
 
-#TODO: Create a function to generate a random number for the message control ID
-#TODO: Create a function to generate a random number for the visit institution
-#TODO: Create a seperate function for PID SEGMENT
 
-   # Add PID Segment
-    try:
-       hl7.pid.pid_1 = "1"
-       # PID 3 defaults to P
-       #hl7.pid.pid_3 = patient_info.id
-       hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
-       hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
-       hl7.pid.pid_8 = patient_info.gender[0].upper()
-       hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
-       visitNo = create_visit_number()
-       visitInstitution = create_visit_instiution()
-       #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
-       hl7.pid.pid_18 = visitNo + "^" + visitInstitution
-       #hl7.pid.pid_19 = patient_info.ssn
-    except Exception as ae:
-        print("An AssertionError occurred:", ae)
-        print(f"Could not create MSH Segment: {ae}")
-        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
-        logging.error(traceback.format_exc())   
+    #TODO: Create a seperate function for PID SEGMENT
+    hl7 = create_pid(patient_info, hl7)
+
+ 
         
-#TODO: Create a seperate function for ORC SEGMENT
-    # Add ORC Segment for the Order (dummy data for example)
-    try:
-        placer_order_num = create_placer_order_num()
-        filler_order_id = create_filler_order_num()
-        hl7.orc.orc_1 = "O"  # New Order
-        hl7.orc.orc_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
-        hl7.orc.orc_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
-    except Exception as ae:
-        print("An AssertionError occurred:", ae)
-        print(f"Could not create MSH Segment: {ae}")
-        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
-        logging.error(traceback.format_exc())
+
+    # Add ORC Segment for the Order (dummy data for example) the placer order ID and filler order ID are the same for ORC and OBR
+    placer_order_num = create_placer_order_num()
+    filler_order_id = create_filler_order_num()
+    hl7 = create_orc(hl7, placer_order_num, filler_order_id)
    
-  
-    
+   
     # Add OBR Segment for the Order details (dummy data for example)
-    try:
-        request_date = create_obr_time()
-        observation_date = create_obr_time()
-        quantity_timing = create_obr_time()
-
-        hl7.obr.obr_1 = "1"  # Set ID
-        hl7.obr.obr_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
-        hl7.obr.obr_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
-        hl7.obr.obr_4 = patient_info.id  # some test code hl7.Orders.ext_code 
-        #Requested Date/Time lab.Request.date_refer 
-        hl7.obr.obr_6 = request_date
-        # Observation Date/Time lab.Resultp_extra.doc_date
-        hl7.obr.obr_7 = observation_date  
-        #Ordering Provider 2 component 1 component 1 lab.Resultp_extra.doc_ordering  Default 'WACON'2 component 1 lab.Request.doctor Default 'TEST'
-        hl7.obr.obr_16 = "WACON^TEST"
-        #Diagnostic Service ID  2 components 1^2 component 2 lab.Request.lab 
-        hl7.obr.obr_24 = "BI^UHC"
-        #Quantity/Timing 6 component s 6 components1 component 4 lab.Request.date_service,lab.Request.time_service2 component 4 lab.Request.date_coln,lab.Request.time_coln 3 component 6 lab.Request.priority_coln 
-        hl7.obr.obr_27 = f"^^^{quantity_timing}^^E"
-
-
-    except:
-        print("An AssertionError occurred:", ae)
-        print(f"Could not create MSH Segment: {ae}")
-        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
-        logging.error(traceback.format_exc())
+    hl7 = create_obr(patient_info, placer_order_num, filler_order_id, hl7)
+  
     
     return hl7
 
