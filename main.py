@@ -1,8 +1,6 @@
 import logging
 import string
-from typing import Optional
 import traceback
-import glob
 import firebase_admin
 from firebase_admin import credentials, firestore
 from fhir.resources.R4B.bundle import Bundle
@@ -10,25 +8,58 @@ from fhir.resources.R4B.patient import Patient
 from datetime import date
 import datetime
 from pathlib import Path
-from hl7apy.core import Message
 from hl7apy import core
 import random
-import sys
-import os
+import re
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
 
-
-
-def create_orm_message(patient_info, messageType):
-    global BASE_DIR
-    current_date = date.today()
+def create_control_id():
     current_date_time = datetime.datetime.now()
-
     formatted_date_minutes_milliseconds = current_date_time.strftime("%Y%m%d%H%M%S.%f")
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
+    return control_id
+
+
+def create_visit_number():
+    visit_number = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)])
+    return visit_number
+
+def create_visit_instiution():
+    visit_institution = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
+                           + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
+    return visit_institution 
+
+
+def create_patient_id():
+    patient_id = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
+                           + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
+    return patient_id
+
+# dummy placer order ID up to 75 characters
+def create_placer_order_num():
+    order_id = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
+                           + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
+    return order_id
+
+ # dummy filler order ID  with the format "1^^23^4"
+def create_filler_order_num():
+    # allocate a random number between 1 and 999999999
+    random_number = random.randint(1, 999999999)
+    # format the random number as 1^^23^4
+    filler_order_id = f"1^^{random_number //10000}^{random_number % 10000}"
+
+    return filler_order_id
+
+
+def create_message(patient_info, messageType):
+    global BASE_DIR
+    current_date = date.today()
+
+    # used for the control id
+    control_id = create_control_id()
     
   
     # Create empty HL7 message
@@ -37,19 +68,28 @@ def create_orm_message(patient_info, messageType):
     except Exception as e:
         hl7 = None
         print(f"An error occurred while initializing the HL7 Message: {e}")
-        print(f"messageType: {messageType}")  
+        print(f"messageType: {messageType}") 
 
+        
+
+#TODO: Make a call to each of the functions below to create the segments depending on the message type 
+ 
+#TODO: Create a seperate function for MSH SEGMENT
      # Initialize msh to None
     msh = None
-    
+
     # Add MSH Segment
     try:
+        #convert the message type to a string replacing the underscore with ^ 
+        messageTypeSegment = str(messageType)
+        messageTypeSegment = messageTypeSegment.replace("_", "^")
+
         hl7.msh.msh_3 = "ULTRA"  # Sending Application
         hl7.msh.msh_4 = "MATER"  # Sending Facility
         hl7.msh.msh_5 = "PAMS"  # Receiving Application
         hl7.msh.msh_6 = "PAMS"  # Receiving Facility
         hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M%S")  # Date/Time of Message
-        hl7.msh.msh_9 = "ORU^R01"  # Message Type
+        hl7.msh.msh_9 = messageTypeSegment  # Message Type
         hl7.msh.msh_10 = control_id  # Message Control ID
         hl7.msh.msh_11 = "T"  # Processing ID
         hl7.msh.msh_12 = "2.5"  # Version ID
@@ -60,8 +100,11 @@ def create_orm_message(patient_info, messageType):
         print(f"Could not create MSH Segment: {ae}")
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())
-        MESSAGE_CONTROL_ID += 1
 
+#TODO: Create a function to generate a random number for the message control ID
+
+#TODO: Create a function to generate a random number for the visit institution
+#TODO: Create a seperate function for PID SEGMENT
    # Add PID Segment
     try:
        hl7.pid.pid_1 = "1"
@@ -71,10 +114,8 @@ def create_orm_message(patient_info, messageType):
        hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
        hl7.pid.pid_8 = patient_info.gender[0].upper()
        hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
-       visitNo = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)])
-       visitInstitution = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
-                           + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
-       
+       visitNo = create_visit_number()
+       visitInstitution = create_visit_instiution()
        #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
        hl7.pid.pid_18 = visitNo + "^" + visitInstitution
        #hl7.pid.pid_19 = patient_info.ssn
@@ -84,12 +125,15 @@ def create_orm_message(patient_info, messageType):
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())   
         
-    
+#TODO: Create a seperate function for ORC SEGMENT
+
     # Add ORC Segment for the Order (dummy data for example)
     try:
+        placer_order_num = create_placer_order_num()
+        filler_order_id = create_filler_order_num()
         hl7.orc.orc_1 = "O"  # New Order
-        hl7.orc.orc_2 = "1234"  # Some dummy placer order ID up to 75 characters
-        hl7.orc.orc_3 = "1^^23^^4"  # Some dummy filler order ID up to 75 characters
+        hl7.orc.orc_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
+        hl7.orc.orc_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
     except Exception as ae:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
@@ -207,7 +251,7 @@ def main():
                 fhir_message = f.read()
                 patient_info = parse_fhir_message(fhir_message)
                 if patient_info:
-                    hl7_message = create_orm_message(patient_info, "ORU_R01")
+                    hl7_message = create_message(patient_info, "ORU_R01")
                     print("Generated HL7 message:", str(hl7_message))
                     save_hl7_message_to_file(hl7_message, patient_info.id)
                     patient_id = patient_info.id
