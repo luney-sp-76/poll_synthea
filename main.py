@@ -10,6 +10,7 @@ import datetime
 from pathlib import Path
 from hl7apy import core
 import random
+import create_pid
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -56,28 +57,29 @@ def create_obr_time():
 
     return random_date.strftime("%Y%m%d%H%M")
 
-# Creates a PID segment for the HL7 message requires a patient_info object and the hl7 message
-def create_pid(patient_info, hl7):
-    try:
-       hl7.pid.pid_1 = "1"
-       # PID 3 defaults to P
-       #hl7.pid.pid_3 = patient_info.id
-       hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
-       hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
-       hl7.pid.pid_8 = patient_info.gender[0].upper()
-       hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
-       visitNo = create_visit_number()
-       visitInstitution = create_visit_instiution()
-       #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
-       hl7.pid.pid_18 = visitNo + "^" + visitInstitution
-       #hl7.pid.pid_19 = patient_info.ssn
-    except Exception as ae:
-        print("An AssertionError occurred:", ae)
-        print(f"Could not create MSH Segment: {ae}")
-        logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
-        logging.error(traceback.format_exc())
+# # Creates a PID segment for the HL7 message requires a patient_info object and the hl7 message
+# def create_pid(patient_info, hl7):
+#     try:
+#        hl7.pid.pid_1 = "1"
+#        # PID 3 defaults to P
+#        #hl7.pid.pid_3 = patient_info.id
+#        hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
+#        hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
+#        hl7.pid.pid_8 = patient_info.gender[0].upper()
+#        hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
+#        visitNo = create_visit_number()
+#        visitInstitution = create_visit_instiution()
+#        #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
+#        hl7.pid.pid_18 = visitNo + "^" + visitInstitution
+#        #hl7.pid.pid_19 = patient_info.ssn
+#     except Exception as ae:
+#         print("An AssertionError occurred:", ae)
+#         print(f"Could not create MSH Segment: {ae}")
+#         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
+#         logging.error(traceback.format_exc())
 
-    return hl7
+#     return hl7
+
 
 # Creates a OBR segment for the HL7 message requires a patient_info object and the hl7 message
 def create_obr(patient_info, placer_order_num, filler_order_id, hl7):
@@ -100,7 +102,7 @@ def create_obr(patient_info, placer_order_num, filler_order_id, hl7):
         hl7.obr.obr_24 = "BI^UHC"
         #Quantity/Timing 6 component s 6 components1 component 4 lab.Request.date_service,lab.Request.time_service2 component 4 lab.Request.date_coln,lab.Request.time_coln 3 component 6 lab.Request.priority_coln 
         hl7.obr.obr_27 = f"^^^{quantity_timing}^^E"
-    except:
+    except Exception as ae:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
@@ -173,7 +175,7 @@ def create_message(patient_info, messageType):
 
 
     #TODO: Create a seperate function for PID SEGMENT
-    hl7 = create_pid(patient_info, hl7)
+    hl7 = create_pid.create_pid(patient_info, hl7)
 
  
         
