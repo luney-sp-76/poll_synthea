@@ -10,33 +10,29 @@ import datetime
 from pathlib import Path
 from hl7apy import core
 import random
-import re
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
 
+# Creates a random control ID for the HL7 message
 def create_control_id():
     current_date_time = datetime.datetime.now()
     formatted_date_minutes_milliseconds = current_date_time.strftime("%Y%m%d%H%M%S.%f")
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
     return control_id
 
-
+# Creates a random visit number for the HL7 message
 def create_visit_number():
     visit_number = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)])
     return visit_number
 
+# Creates a random visit institution for the HL7 message
 def create_visit_instiution():
     visit_institution = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
                            + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
     return visit_institution 
 
-
-def create_patient_id():
-    patient_id = ''.join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)]) \
-                           + ''.join(["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)])
-    return patient_id
 
 # dummy placer order ID up to 75 characters
 def create_placer_order_num():
@@ -53,7 +49,15 @@ def create_filler_order_num():
 
     return filler_order_id
 
+# generate a random time for the OBR segment
+def create_obr_time():
+    random_days_ago = random.randint(1, 7)
+    random_date = date.today() - datetime.timedelta(days=random_days_ago)
 
+    return random_date.strftime("%Y%m%d%H%M")
+
+
+# Creates a HL7 message
 def create_message(patient_info, messageType):
     global BASE_DIR
     current_date = date.today()
@@ -73,8 +77,8 @@ def create_message(patient_info, messageType):
         
 
 #TODO: Make a call to each of the functions below to create the segments depending on the message type 
- 
 #TODO: Create a seperate function for MSH SEGMENT
+
      # Initialize msh to None
     msh = None
 
@@ -88,7 +92,7 @@ def create_message(patient_info, messageType):
         hl7.msh.msh_4 = "MATER"  # Sending Facility
         hl7.msh.msh_5 = "PAMS"  # Receiving Application
         hl7.msh.msh_6 = "PAMS"  # Receiving Facility
-        hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M%S")  # Date/Time of Message
+        hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M")  # Date/Time of Message
         hl7.msh.msh_9 = messageTypeSegment  # Message Type
         hl7.msh.msh_10 = control_id  # Message Control ID
         hl7.msh.msh_11 = "T"  # Processing ID
@@ -102,9 +106,9 @@ def create_message(patient_info, messageType):
         logging.error(traceback.format_exc())
 
 #TODO: Create a function to generate a random number for the message control ID
-
 #TODO: Create a function to generate a random number for the visit institution
 #TODO: Create a seperate function for PID SEGMENT
+
    # Add PID Segment
     try:
        hl7.pid.pid_1 = "1"
@@ -126,7 +130,6 @@ def create_message(patient_info, messageType):
         logging.error(traceback.format_exc())   
         
 #TODO: Create a seperate function for ORC SEGMENT
-
     # Add ORC Segment for the Order (dummy data for example)
     try:
         placer_order_num = create_placer_order_num()
@@ -144,18 +147,24 @@ def create_message(patient_info, messageType):
     
     # Add OBR Segment for the Order details (dummy data for example)
     try:
+        request_date = create_obr_time()
+        observation_date = create_obr_time()
+        quantity_timing = create_obr_time()
+
         hl7.obr.obr_1 = "1"  # Set ID
         hl7.obr.obr_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
         hl7.obr.obr_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
-        hl7.obr.obr_4 = "TestCode"  # some test code hl7.Orders.ext_code 
-        #request_date.strftime("%Y%m%d%H%M%S") Requested Date/Time lab.Request.date_refer 
-        hl7.obr.obr_6 = ""
+        hl7.obr.obr_4 = patient_info.id  # some test code hl7.Orders.ext_code 
+        #Requested Date/Time lab.Request.date_refer 
+        hl7.obr.obr_6 = request_date
+        # Observation Date/Time lab.Resultp_extra.doc_date
+        hl7.obr.obr_7 = observation_date  
         #Ordering Provider 2 component 1 component 1 lab.Resultp_extra.doc_ordering  Default 'WACON'2 component 1 lab.Request.doctor Default 'TEST'
         hl7.obr.obr_16 = "WACON^TEST"
-        #Diagnostic Service ID  2 components 1^ 2 component 2 lab.Request.lab 
-        hl7.obr.obr_24 = ""
+        #Diagnostic Service ID  2 components 1^2 component 2 lab.Request.lab 
+        hl7.obr.obr_24 = "BI^UHC"
         #Quantity/Timing 6 component s 6 components1 component 4 lab.Request.date_service,lab.Request.time_service2 component 4 lab.Request.date_coln,lab.Request.time_coln 3 component 6 lab.Request.priority_coln 
-        hl7.obr.obr_27 = ""
+        hl7.obr.obr_27 = f"^^^{quantity_timing}^^E"
 
 
     except:
@@ -257,6 +266,16 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
 def main():
     # Initialize Firebase Admin SDK with your credentials
     db = initialize_firestore()
+    print("1. ORU_R01\n")
+    print("2. ADT_A03\n")
+    print("3. ORM_O01\n")
+    messageType = input("Choose a message type: ")
+    if messageType == "1":
+        messageType = "ORU_R01"
+    elif messageType == "2":
+        messageType = "ADT_A03"
+    elif messageType == "3":
+        messageType = "ORM_O01"
     try:
         # Iterate through FHIR JSON files in the work folder
         for file in work_folder_path.glob("*.json"):
@@ -264,7 +283,7 @@ def main():
                 fhir_message = f.read()
                 patient_info = parse_fhir_message(fhir_message)
                 if patient_info:
-                    hl7_message = create_message(patient_info, "ORU_R01")
+                    hl7_message = create_message(patient_info, messageType)
                     print("Generated HL7 message:", str(hl7_message))
                     save_hl7_message_to_file(hl7_message, patient_info.id)
                     patient_id = patient_info.id
