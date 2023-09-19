@@ -133,7 +133,9 @@ def create_message(patient_info, messageType):
 
     return hl7
 
-
+# update the dobs after the sample patients are created - 
+# if a request is for 365 patients between the age 10 and 11 then each patient 
+# could be given a Day of birth that is incremented one day older than the previous for the whole year
 class PatientInfo:
     def __init__(
         self,
@@ -184,12 +186,19 @@ def parse_fhir_message(fhir_message):
     # Extract information from the Bundle
     print("Bundle Type:", bundle.type)
     print("Entry Count:", len(bundle.entry))
-
+    count = 0
     for entry in bundle.entry:
         resource = entry.resource
         if isinstance(resource, Patient):
-            birth_date = resource.birthDate
-            age = calculate_age(birth_date)
+            count += 1
+            #set the birth date to be the first day of the year using the year of the first patient
+            if count == 1:
+                birth_date = resource.birthDate
+                birth_date = birth_date.replace(month=1, day=1)
+                age = calculate_age(birth_date)
+            else:
+                #use the previous patients birthdate to increment the next patients birthdate by one day
+                birth_date = birth_date + datetime.timedelta(days=1)
             ssn = None
             for identifier in resource.identifier:
                 if identifier.system == "http://hl7.org/fhir/sid/us-ssn":
