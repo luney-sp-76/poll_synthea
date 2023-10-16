@@ -13,7 +13,7 @@ import random
 import segments.create_pid as create_pid
 import segments.create_obr as create_obr
 import segments.create_orc as create_orc
-
+import segments.create_msh as create_msh
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -81,34 +81,33 @@ def create_message(patient_info, messageType):
         print(f"messageType: {messageType}")
 
     # TODO: Make a call to each of the functions below to create the segments depending on the message type
+    hl7 = create_msh.create_msh(messageType, control_id, hl7, current_date) # MSH Segment
+   
 
-    # Initialize msh to None
-    msh = None
+    # # Add MSH Segment
+    # try:
+    #     # convert the message type to a string replacing the underscore with ^
+    #     messageTypeSegment = str(messageType)
+    #     messageTypeSegment = messageTypeSegment.replace("_", "^")
 
-    # Add MSH Segment
-    try:
-        # convert the message type to a string replacing the underscore with ^
-        messageTypeSegment = str(messageType)
-        messageTypeSegment = messageTypeSegment.replace("_", "^")
-
-        hl7.msh.msh_3 = "ULTRA"  # Sending Application
-        hl7.msh.msh_4 = "MATER"  # Sending Facility
-        hl7.msh.msh_5 = "PAMS"  # Receiving Application
-        hl7.msh.msh_6 = "PAMS"  # Receiving Facility
-        hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M")  # Date/Time of Message
-        hl7.msh.msh_9 = messageTypeSegment  # Message Type
-        hl7.msh.msh_10 = control_id  # Message Control ID
-        hl7.msh.msh_11 = "T"  # Processing ID
-        hl7.msh.msh_12 = "2.5"  # Version ID
-        hl7.msh.msh_15 = "AL"  # Accept Acknowledgment Type
-        hl7.msh.msh_16 = "NE"  # Application Acknowledgment Type
-    except Exception as ae:
-        print("An AssertionError occurred:", ae)
-        print(f"Could not create MSH Segment: {ae}")
-        logging.error(
-            f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}"
-        )
-        logging.error(traceback.format_exc())
+    #     hl7.msh.msh_3 = "ULTRA"  # Sending Application
+    #     hl7.msh.msh_4 = "MATER"  # Sending Facility
+    #     hl7.msh.msh_5 = "PAMS"  # Receiving Application
+    #     hl7.msh.msh_6 = "PAMS"  # Receiving Facility
+    #     hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M")  # Date/Time of Message
+    #     hl7.msh.msh_9 = messageTypeSegment  # Message Type
+    #     hl7.msh.msh_10 = control_id  # Message Control ID
+    #     hl7.msh.msh_11 = "T"  # Processing ID
+    #     hl7.msh.msh_12 = "2.5"  # Version ID
+    #     hl7.msh.msh_15 = "AL"  # Accept Acknowledgment Type
+    #     hl7.msh.msh_16 = "NE"  # Application Acknowledgment Type
+    # except Exception as ae:
+    #     print("An AssertionError occurred:", ae)
+    #     print(f"Could not create MSH Segment: {ae}")
+    #     logging.error(
+    #         f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}"
+    #     )
+    #     logging.error(traceback.format_exc())
 
     # TODO: Create a seperate function for PID SEGMENT
     hl7 = create_pid.create_pid(patient_info, hl7)
