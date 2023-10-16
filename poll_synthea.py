@@ -185,7 +185,7 @@ def get_valid_sex_input():
             print("Please enter M or F")
             continue
 
-
+#TODO: Add and test sex of patient
 def call_for_patients():
     number_of_patients = get_valid_positive_integer_input()
     age_from = get_valid_lower_positive_integer_input()
