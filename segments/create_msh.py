@@ -1,12 +1,10 @@
 
 import logging
 import traceback
-import string
 from datetime import date
-import datetime
 from pathlib import Path
 from hl7apy import core
-import random
+
 
 def create_msh(messageType, control_id, hl7, current_date):
 # Initialize msh to None
