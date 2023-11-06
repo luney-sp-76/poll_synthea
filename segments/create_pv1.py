@@ -1,6 +1,6 @@
 import logging
 import traceback
-from utilities import create_visit_instiution
+from generators.utilities import create_visit_instiution
 
 
 
@@ -10,7 +10,6 @@ def create_pv1(patient_info, hl7):
         hl7.pv1.pv1_1 = "1"  # Set Patient Class to Inpatient
         hl7.pv1.pv1_2 = "O"  # Set Visit Number
         hl7.pv1.pv1_3 = create_visit_instiution()  # Set Visit Institution
-        hl7.pv1.pv1_4 = patient_info.facility  # Set Facility
         hl7.pv1.pv1_7 = "^ACON"  # Set Patient Class to Inpatient
         hl7.pv1.pv1_8 = "^ANAESTHETICS CONS^^^^^^L"  # Set Patient Type to Ambulatory
         hl7.pv1.pv1_9 = "^ANAESTHETICS CONS^^^^^^^AUSHICPR"

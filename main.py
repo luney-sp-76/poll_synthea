@@ -16,7 +16,7 @@ import segments.create_orc as create_orc
 import segments.create_msh as create_msh
 import segments.create_evn as create_evn
 import segments.create_pv1 as create_pv1
-from utilities import create_placer_order_num, create_filler_order_num, create_control_id
+from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"

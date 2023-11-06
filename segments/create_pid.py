@@ -1,6 +1,6 @@
 import logging
 import traceback
-from utilities import create_visit_number, create_visit_instiution
+from generators.utilities import create_visit_number, create_visit_instiution
 
 
 
