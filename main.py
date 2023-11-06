@@ -14,6 +14,7 @@ import segments.create_pid as create_pid
 import segments.create_obr as create_obr
 import segments.create_orc as create_orc
 import segments.create_msh as create_msh
+import segments.create_evn as create_evn
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -66,8 +67,10 @@ def create_filler_order_num():
 
 def create_adt_message(patient_info, messageType):
     hl7 = create_message_header(patient_info, messageType)
-    #TODO:
-    # Add create_evn EVN Segment for the event type (dummy data for example)
+    hl7 = create_evn.create_evn(patient_info, hl7)
+    hl7 = create_pid.create_pid(patient_info, hl7)
+    #TODO: Add Pv1 segment
+ 
     return hl7
 
 def create_orm_message(patient_info, messageType):
