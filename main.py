@@ -64,8 +64,32 @@ def create_filler_order_num():
     return filler_order_id
 
 
+def create_adt_message(patient_info, messageType):
+    hl7 = create_message_header(patient_info, messageType)
+    #TODO:
+    # Add create_evn EVN Segment for the event type (dummy data for example)
+    return hl7
+
+def create_orm_message(patient_info, messageType):
+    hl7 = create_message_header(patient_info, messageType)
+     # TODO: Create a seperate function for PID SEGMENT
+    hl7 = create_pid.create_pid(patient_info, hl7)
+
+def create_oru_message(patient_info, messageType):
+    hl7 = create_message_header(patient_info, messageType)
+    hl7 = create_pid.create_pid(patient_info, hl7)
+     # Add ORC Segment for the Order (dummy data for example) the placer order ID and filler order ID are the same for ORC and OBR
+    placer_order_num = create_placer_order_num()
+    filler_order_id = create_filler_order_num()
+    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
+    # Add OBR Segment for the Order details (dummy data for example)
+    hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
+
+    return hl7
+
+
 # Creates a HL7 message includes the MSH segment then options based on message type
-def create_message(patient_info, messageType):
+def create_message_header(patient_info, messageType):
     global BASE_DIR
     current_date = date.today()
 
@@ -80,57 +104,11 @@ def create_message(patient_info, messageType):
         print(f"An error occurred while initializing the HL7 Message: {e}")
         print(f"messageType: {messageType}")
 
-    # TODO: Make a call to each of the functions below to create the segments depending on the message type
+    # Create MSH Segment
     hl7 = create_msh.create_msh(messageType, control_id, hl7, current_date) # MSH Segment
-   
-
-    # # Add MSH Segment
-    # try:
-    #     # convert the message type to a string replacing the underscore with ^
-    #     messageTypeSegment = str(messageType)
-    #     messageTypeSegment = messageTypeSegment.replace("_", "^")
-
-    #     hl7.msh.msh_3 = "ULTRA"  # Sending Application
-    #     hl7.msh.msh_4 = "MATER"  # Sending Facility
-    #     hl7.msh.msh_5 = "PAMS"  # Receiving Application
-    #     hl7.msh.msh_6 = "PAMS"  # Receiving Facility
-    #     hl7.msh.msh_7 = current_date.strftime("%Y%m%d%H%M")  # Date/Time of Message
-    #     hl7.msh.msh_9 = messageTypeSegment  # Message Type
-    #     hl7.msh.msh_10 = control_id  # Message Control ID
-    #     hl7.msh.msh_11 = "T"  # Processing ID
-    #     hl7.msh.msh_12 = "2.5"  # Version ID
-    #     hl7.msh.msh_15 = "AL"  # Accept Acknowledgment Type
-    #     hl7.msh.msh_16 = "NE"  # Application Acknowledgment Type
-    # except Exception as ae:
-    #     print("An AssertionError occurred:", ae)
-    #     print(f"Could not create MSH Segment: {ae}")
-    #     logging.error(
-    #         f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}"
-    #     )
-    #     logging.error(traceback.format_exc())
-
-    # TODO: Create a seperate function for PID SEGMENT
-    hl7 = create_pid.create_pid(patient_info, hl7)
-
-    # if messageType == "ADT_A03":
-    #     print("ADT_A03; In Development")
-    #     return hl7
-    
-    # if  messageType == "ORM_O01":
-    #     print("ORM_O01; In Development")
-    #     return hl7
-    
-    # if messageType == "ORU_R01":
-
-    # Add ORC Segment for the Order (dummy data for example) the placer order ID and filler order ID are the same for ORC and OBR
-    placer_order_num = create_placer_order_num()
-    filler_order_id = create_filler_order_num()
-    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
-
-    # Add OBR Segment for the Order details (dummy data for example)
-    hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
 
     return hl7
+
 
 # update the dobs after the sample patients are created - 
 # if a request is for 365 patients between the age 10 and 11 then each patient 
@@ -273,7 +251,12 @@ def main():
                 fhir_message = f.read()
                 patient_info = parse_fhir_message(fhir_message)
                 if patient_info:
-                    hl7_message = create_message(patient_info, messageType)
+                    if messageType == "ADT_A03":
+                        hl7_message = create_adt_message(patient_info, messageType)
+                    elif messageType == "ORM_O01":
+                        hl7_message = create_orm_message(patient_info, messageType)
+                    elif messageType == "ORU_R01":
+                        hl7_message = create_oru_message(patient_info, messageType)
                     print("Generated HL7 message:", str(hl7_message))
                     save_hl7_message_to_file(hl7_message, patient_info.id)
                     patient_id = patient_info.id
