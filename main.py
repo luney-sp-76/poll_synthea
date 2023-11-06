@@ -67,7 +67,7 @@ def create_filler_order_num():
 
 def create_adt_message(patient_info, messageType):
     hl7 = create_message_header(patient_info, messageType)
-    hl7 = create_evn.create_evn(patient_info, hl7)
+    hl7 = create_evn.create_evn(hl7)
     hl7 = create_pid.create_pid(patient_info, hl7)
     #TODO: Add Pv1 segment
  
@@ -75,7 +75,6 @@ def create_adt_message(patient_info, messageType):
 
 def create_orm_message(patient_info, messageType):
     hl7 = create_message_header(patient_info, messageType)
-     # TODO: Create a seperate function for PID SEGMENT
     hl7 = create_pid.create_pid(patient_info, hl7)
 
 def create_oru_message(patient_info, messageType):
