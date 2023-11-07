@@ -2,10 +2,7 @@ import logging
 import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
-from fhir.resources.R4B.bundle import Bundle
-from fhir.resources.R4B.patient import Patient
 from datetime import date
-import datetime
 from pathlib import Path
 from hl7apy import core
 import segments.create_pid as create_pid
@@ -20,14 +17,34 @@ BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
 
+# Creates an HL7 MSH segment and returns the HL7 message this must be called first to create the HL7 message
+def create_message_header(patient_info, messageType):
+    global BASE_DIR
+    current_date = date.today()
+
+    # used for the control id
+    control_id = create_control_id()
+
+    # Create empty HL7 message
+    try:
+        hl7 = core.Message(messageType, version="2.5")
+    except Exception as e:
+        hl7 = None
+        print(f"An error occurred while initializing the HL7 Message: {e}")
+        print(f"messageType: {messageType}")
+
+    # Create MSH Segment
+    hl7 = create_msh.create_msh(messageType, control_id, hl7, current_date) # MSH Segment
+
+    return hl7
+
 # Creates an HL7 ADT message includes the MSH segment then options based on message type then returns an HL7 message
 def create_adt_message(patient_info, messageType):
     hl7 = create_message_header(patient_info, messageType)
     hl7 = create_evn.create_evn(hl7)
     hl7 = create_pid.create_pid(patient_info, hl7)
     hl7 = create_pv1.create_pv1(patient_info, hl7)
-    #TODO: Add Pv1 segment
- 
+  
     return hl7
 
 # Creates an HL7 ORM message includes the MSH segment then options based on message type then returns an HL7 message
@@ -55,28 +72,7 @@ def create_oru_message(patient_info, messageType):
     return hl7
 
 
-# Creates an HL7 MSH segment and returns the HL7 message
-def create_message_header(patient_info, messageType):
-    global BASE_DIR
-    current_date = date.today()
-
-    # used for the control id
-    control_id = create_control_id()
-
-    # Create empty HL7 message
-    try:
-        hl7 = core.Message(messageType, version="2.5")
-    except Exception as e:
-        hl7 = None
-        print(f"An error occurred while initializing the HL7 Message: {e}")
-        print(f"messageType: {messageType}")
-
-    # Create MSH Segment
-    hl7 = create_msh.create_msh(messageType, control_id, hl7, current_date) # MSH Segment
-
-    return hl7
-
-        
+# HL7MessageProcessor class to process FHIR messages and create HL7 messages  
 class HL7MessageProcessor:
     def __init__(self, hl7_folder_path):
         self.db = initialize_firestore()
