@@ -6,6 +6,14 @@ import datetime
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
 
+# generate a random time for the OBR segment
+def create_obr_time():
+    random_days_ago = random.randint(1, 7)
+    random_date = date.today() - datetime.timedelta(days=random_days_ago)
+
+    return random_date.strftime("%Y%m%d%H%M")
+
+
 def create_placer_order_num():
     order_id = "".join(
         ["{}".format(random.randint(0, 9)) for _ in range(0, 3)]
