@@ -1,14 +1,14 @@
 import logging
 import traceback
-import utilities.create_obr_time as create_obr_time
+from generators.utilities import create_obr_time
 
 
 # Creates a OBR segment for the HL7 message requires a patient_info object and the hl7 message
 def create_obr(patient_info, placer_order_num, filler_order_id, hl7):
     try:
-        request_date = create_obr_time.create_obr_time()
-        observation_date = create_obr_time.create_obr_time()
-        quantity_timing = create_obr_time.create_obr_time()
+        request_date = create_obr_time()
+        observation_date = create_obr_time()
+        quantity_timing = create_obr_time()
 
         hl7.obr.obr_1 = "1"  # Set ID
         hl7.obr.obr_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
