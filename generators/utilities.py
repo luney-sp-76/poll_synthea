@@ -13,7 +13,7 @@ def create_obr_time():
 
     return random_date.strftime("%Y%m%d%H%M")
 
-
+# generate a random placer order number for the HL7 message
 def create_placer_order_num():
     order_id = "".join(
         ["{}".format(random.randint(0, 9)) for _ in range(0, 3)]
@@ -22,6 +22,7 @@ def create_placer_order_num():
     )
     return order_id
 
+# generate a random filler order number for the HL7 message
 def create_filler_order_num():
     # allocate a random number between 1 and 999999999
     random_number = random.randint(1, 999999999)
@@ -80,7 +81,7 @@ class PatientInfo:
         self.postal_code = postal_code
         self.age = age
 
-
+# Calculate the age of the patient
 def calculate_age(birth_date):
     today = date.today()
     age = (
