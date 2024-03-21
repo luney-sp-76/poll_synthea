@@ -15,7 +15,7 @@ work_fhir_folder_path = BASE_DIR / "Work"
 metadata_folder_path = BASE_DIR / "output/metadata"
 
 
-def run_synthea(x,age):
+def run_synthea(x,age, sex):
     # Command to run Synthea
     command = [
         "java",
@@ -25,8 +25,8 @@ def run_synthea(x,age):
         str(x),
         "-a",
         str(age),
-        #"-g",
-        #str(sex),
+        "-g",
+        str(sex),
         "--exporter.fhir.export=true",
         "--exporter.fhir.transaction_bundle=true",
         "--exporter.years_of_history=0",
@@ -177,13 +177,12 @@ def get_valid_upper_positive_integer_input():
 '''define the sex of patients to be created and check the validity of the users input to be'''
 def get_valid_sex_input():
     while True:
-        input =("Enter the Sex of patients to create:")
-        if input == 'M' or input == 'm' or input == 'F' or input == 'f':
-            False
-            return input
+        user_input = input("Enter the Sex of patients to create:")
+        if user_input.upper() == 'M' or user_input.upper() == 'F':
+            return user_input.upper()
         else:
             print("Please enter M or F")
-            continue
+        
 
 #TODO: Add and test sex of patient
 def call_for_patients():
@@ -191,10 +190,10 @@ def call_for_patients():
     age_from = get_valid_lower_positive_integer_input()
     age_to = get_valid_upper_positive_integer_input()
     age = f"{age_from}-{age_to}" 
+    sex = get_valid_sex_input()
     print(age)
-     #valid sex input M or F
-    #sex = get_valid_sex_input()
-    run_synthea(number_of_patients, age)
+    print(sex)
+    run_synthea(number_of_patients, age, sex)
 
 
 #call_for_patients()
