@@ -8,7 +8,7 @@ from generators.utilities import create_visit_number, create_visit_instiution, c
 def create_pid(patient_info, hl7):
     try:
        hl7.pid.pid_1 = "1"
-       hl7.pid.pid_2 = create_patient_id()
+       hl7.pid.pid_3 = create_patient_id()
        # PID 3 defaults to P
        #hl7.pid.pid_3 = patient_info.id
        hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
