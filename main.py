@@ -27,7 +27,7 @@ def create_message_header(patient_info, messageType):
 
     # Create empty HL7 message
     try:
-        hl7 = core.Message(messageType, version="2.5")
+        hl7 = core.Message(messageType, version="2.3")
     except Exception as e:
         hl7 = None
         print(f"An error occurred while initializing the HL7 Message: {e}")
@@ -84,13 +84,13 @@ class HL7MessageProcessor:
         #TODO: Add a menu to choose the message type with validation for choices
         # Initialize Firebase Admin SDK with your credentials
         print("1. ORU_R01\n")
-        print("2. ADT_A03\n")
+        print("2. ADT_A01\n")
         print("3. ORM_O01\n")
         messageType = input("Choose a message type: ")
         if messageType == "1":
             self.messageType = "ORU_R01"
         elif messageType == "2":
-            self.messageType = "ADT_A03"
+            self.messageType = "ADT_A01"
         elif messageType == "3":
             self.messageType = "ORM_O01"
         try:
@@ -100,7 +100,7 @@ class HL7MessageProcessor:
                     fhir_message = f.read()
                     patient_info = parse_fhir_message(fhir_message)
                     if patient_info:
-                        if self.messageType == "ADT_A03":
+                        if self.messageType == "ADT_A01":
                             hl7_message = create_adt_message(patient_info, self.messageType)
                         elif self.messageType == "ORM_O01":
                             hl7_message = create_orm_message(patient_info, self.messageType)
@@ -146,7 +146,7 @@ class HL7MessageProcessor:
         hl7_file_path = self.hl7_folder_path / f"{patient_id}.hl7"
         with open(hl7_file_path, "w") as hl7_file:
             hl7_file.write(str(hl7_message.msh.value) + "\r")
-            if self.messageType in ["ADT_A03"]:
+            if self.messageType in ["ADT_A01"]:
                 hl7_file.write(str(hl7_message.evn.value) + "\r")
             hl7_file.write(str(hl7_message.pid.value) + "\r")
             hl7_file.write(str(hl7_message.pv1.value) + "\r")

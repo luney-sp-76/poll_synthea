@@ -51,6 +51,14 @@ def create_control_id():
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
     return control_id
 
+def create_patient_id():
+    patient_id = "".join(
+        ["{}".format(random.randint(0, 9)) for _ in range(0, 3)]
+    ) + "".join(
+        ["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)]
+    )
+    return patient_id
+
 # PatientInfo class to store patient information from a Bundled FHIR message
 class PatientInfo:
     def __init__(
