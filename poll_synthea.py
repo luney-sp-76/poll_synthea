@@ -164,7 +164,7 @@ def get_valid_lower_positive_integer_input():
         print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
 
 
-'''define the age of patients to be created and check the validity of the users input to be'''
+'''define the age of patients to be created and check the validity of the users input'''
 def get_valid_upper_positive_integer_input():
     user_input = input("Enter the upper age of patients to create:")
     try:
