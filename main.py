@@ -182,7 +182,14 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
             patient_data = {
                 "id": patient_info.id,
                 "birth_date": patient_info.birth_date.isoformat(),
-                # ... (rest of the fields)
+                "city": patient_info.city,
+                "country": patient_info.country,
+                "first_name": patient_info.first_name,
+                "gender": patient_info.gender,
+                "last_name": patient_info.last_name,
+                "postal_code":patient_info.postal_code,
+                "ssn":patient_info.ssn,
+                "state":patient_info.state
             }
             patient_ref.set(patient_data)
             logging.info(f"Added patient with ID {patient_id} to Firestore.")
