@@ -1,3 +1,6 @@
+# Author: Paul Olphert 2023
+
+# This file contains the code to create the PID segment of the HL7 message
 import logging
 import traceback
 from generators.utilities import create_visit_number, create_visit_instiution, create_patient_id

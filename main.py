@@ -1,3 +1,6 @@
+# Author Paul Olphert 2023
+
+# This file contains the code to Build an HL7 message from FHIR data and create a patient in Firestore
 import logging
 import traceback
 import firebase_admin

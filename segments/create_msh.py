@@ -1,4 +1,6 @@
+# Author: Paul Olphert 2023
 
+# This file contains the code to create the MSH segment of the HL7 message
 import logging
 import traceback
 from datetime import date
