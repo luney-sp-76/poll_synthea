@@ -4,6 +4,9 @@
 #ignore the synthea.jar file
 synthea-with-dependencies.jar
 
+# ignore the tester file 
+tester.py
+
 #firebase
 /firebase/*
 /firebase/pollsynthea-firebase-adminsdk-j01m1-bb3600d47d.json

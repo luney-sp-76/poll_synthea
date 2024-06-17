@@ -1,7 +1,7 @@
 # utilities.py
 import random
 import string
-from datetime import date
+from datetime import date, datetime
 import datetime
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
@@ -75,6 +75,7 @@ class PatientInfo:
         country,
         postal_code,
         age,
+        creation_date,
     ):
         self.id = id
         self.birth_date = birth_date
@@ -88,6 +89,7 @@ class PatientInfo:
         self.country = country
         self.postal_code = postal_code
         self.age = age
+        self.creation_date = creation_date
 
 # Calculate the age of the patient
 def calculate_age(birth_date):
@@ -140,6 +142,7 @@ def parse_fhir_message(fhir_message):
                 middle_name = resource.name[0].given[1]
             else:
                 middle_name = None
+
             patient_info = PatientInfo(
                 id=resource.id,
                 birth_date=birth_date,
@@ -153,6 +156,26 @@ def parse_fhir_message(fhir_message):
                 country=resource.address[0].country,
                 postal_code=resource.address[0].postalCode,
                 age=age,
+                creation_date=date.today(),
             )
             break  # Assuming there's only one patient resource per FHIR message
+    return patient_info
+
+
+def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
+    current_year = date.today().year
+
+    # FOR TESTING PURPOSES ONLY 
+    # current_year += 200
+
+    creation_date = datetime.datetime.strptime(patient_info.creation_date, "%Y-%m-%d").date()
+    birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
+
+    # new year of birth = patients year of birth + (current year - creation date year)
+
+    new_birth_date = birth_date.replace(birth_date.year + (current_year - creation_date.year))
+
+    # Give patient info object new birth year
+    patient_info.birth_date = new_birth_date
+
     return patient_info

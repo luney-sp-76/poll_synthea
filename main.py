@@ -5,7 +5,7 @@ import logging
 import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from hl7apy import core
 import segments.create_pid as create_pid
@@ -14,7 +14,7 @@ import segments.create_orc as create_orc
 import segments.create_msh as create_msh
 import segments.create_evn as create_evn
 import segments.create_pv1 as create_pv1
-from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id, parse_fhir_message, PatientInfo
+from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id, parse_fhir_message, PatientInfo, update_retrieved_patient_dob
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -101,6 +101,8 @@ class HL7MessageProcessor:
             for file in work_folder_path.glob("*.json"):
                 with open(file, "r") as f:
                     fhir_message = f.read()
+
+                    # At this point, patient_info has creation_date
                     patient_info = parse_fhir_message(fhir_message)
                     if patient_info:
                         if self.messageType == "ADT_A01":
@@ -132,6 +134,7 @@ class HL7MessageProcessor:
                                 "country": patient_info.country,
                                 "postal_code": patient_info.postal_code,
                                 "age": patient_info.age,
+                                "creation_date":patient_info.creation_date.isoformat(),
                             }
                             patient_ref.set(patient_data)
                             print(f"Added patient with ID {patient_id} to Firestore.")
@@ -192,17 +195,60 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
                 "last_name": patient_info.last_name,
                 "postal_code":patient_info.postal_code,
                 "ssn":patient_info.ssn,
-                "state":patient_info.state
+                "state":patient_info.state,
+                "creation_date":patient_info.creation_date.isoformat(),
             }
             patient_ref.set(patient_data)
             logging.info(f"Added patient with ID {patient_id} to Firestore.")
-   
+
+
+def get_firestore_age_range(db: firestore.client, lower: int, upper: int) -> None: 
+    """Pull patient information from Firestorm, given an age range"""
+    docs = db.collection("full_fhir").stream()
+
+    for doc in docs:
+        if ((doc._data["age"] >= lower) and (doc._data["age"] <= upper)):
+
+            # Handle middle name 
+            middle_name = None
+            if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
+
+            # Create patient_info object for further use 
+            patient_info = PatientInfo(
+                id=doc._data["id"],
+                birth_date=doc._data["birth_date"],
+                gender=doc._data["gender"],
+                ssn=doc._data["ssn"],
+                first_name=doc._data["first_name"],
+                middle_name=middle_name,
+                last_name=doc._data["last_name"],
+                city=doc._data["city"],
+                state=doc._data["state"],
+                country=doc._data["country"],
+                postal_code=doc._data["postal_code"],
+                age=doc._data["age"],
+                creation_date=doc._data["creation_date"],
+            )
+
+            # An optional step to ensure patient doesn't age - Peter Pan function
+            patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+
+            # FOR TESTING ONLY
+            print(patient_info.first_name)
+            print(patient_info.last_name)
+            print(patient_info.age)
+            print(patient_info.birth_date)
+            print(" ------------------------- ")
+
+            # Return an array of patient objects? vvvv
+
 
 if __name__ == "__main__":
     logging.basicConfig(filename="main.log", level=logging.INFO)
     import poll_synthea
+    
+    poll_synthea.call_for_patients() 
 
-    poll_synthea.call_for_patients()
     # Create an instance of HL7MessageProcessor and call its 'main' method
     hl7_folder = hl7_folder_path  # Make sure this path is correct
     processor = HL7MessageProcessor(hl7_folder)
