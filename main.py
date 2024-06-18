@@ -14,7 +14,8 @@ import segments.create_orc as create_orc
 import segments.create_msh as create_msh
 import segments.create_evn as create_evn
 import segments.create_pv1 as create_pv1
-from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id, parse_fhir_message, PatientInfo, update_retrieved_patient_dob
+from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id, \
+    parse_fhir_message, PatientInfo, update_retrieved_patient_age, update_retrieved_patient_dob
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -202,11 +203,14 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
             logging.info(f"Added patient with ID {patient_id} to Firestore.")
 
 
-def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int) -> list[PatientInfo]: 
+def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
     """Pull patient information from Firestorm, given an age range"""
 
     patients = []
     count = 0
+
+    # To do: improve the streaming process to only include, e.g., those with creation dates if peter_pan is True, 
+    #        records within a specified range, ...
 
     docs = db.collection("full_fhir").stream()
 
@@ -238,12 +242,16 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                 creation_date=creation_date,
             )
 
-            # Updates date of birth to match recorded 'age' parameter given today's date
-            if creation_date:
-                patient_info = update_retrieved_patient_dob(patient_info=patient_info)
-
-            # To do - provide alternative function to update patients' age parameter given today's date and 
-            # their birth date, allowing them to age 
+            # Matches age with dob - method for doing so depends on the peter_pan bool
+            if peter_pan:
+                try:
+                    assert(patient_info.creation_date)
+                    patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+                except:
+                    print(f"Patient {patient_info.id} does not have creation date, changing age attribute...")
+                    patient_info = update_retrieved_patient_age(patient_info=patient_info)
+            else: 
+                patient_info = update_retrieved_patient_age(patient_info=patient_info)
 
             patients.append(patient_info)
             count += 1

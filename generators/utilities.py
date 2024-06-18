@@ -197,6 +197,15 @@ def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
     return patient_info
 
 
+def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
+    """Changes the patient's age to match their date of birth"""
+
+    birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
+    patient_info.age = calculate_age(birth_date)
+
+    return patient_info
+
+
 def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> PatientInfo:
     """Changes the patient's date of birth and age to the desired age"""
 
