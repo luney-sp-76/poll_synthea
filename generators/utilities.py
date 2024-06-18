@@ -91,6 +91,22 @@ class PatientInfo:
         self.age = age
         self.creation_date = creation_date
 
+
+    def __repr__(self):  
+        return ("PatientInfo id:% s birth_date:% s gender:% s ssn:% s first_name:% s middle_name:% s last_name:% s "
+                "city:% s state:% s country:% s postal_code:% s age:% s creation_date:% s") % \
+                (self.id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
+                 self.city, self.state, self.country, self.postal_code, self.age, self.creation_date)
+    
+
+    def __str__(self):
+        return ("From str method of PatientInfo: id is % s, birth_date is % s, gender is % s, ssn is % s, "
+                "first_name is % s, middle_name is % s, last_name is % s, city is % s, state is % s, country is % s, "
+                "postal_code is % s, age is % s, creation_date is % s") % \
+                (self.id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
+                 self.city, self.state, self.country, self.postal_code, self.age, self.creation_date)
+
+
 # Calculate the age of the patient
 def calculate_age(birth_date):
     today = date.today()
@@ -137,7 +153,7 @@ def parse_fhir_message(fhir_message):
                     ssn = identifier.value
                     break
 
-             # Handle missing middle name
+            # Handle missing middle name
             if len(resource.name[0].given) > 1:
                 middle_name = resource.name[0].given[1]
             else:

@@ -202,8 +202,12 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
             logging.info(f"Added patient with ID {patient_id} to Firestore.")
 
 
-def get_firestore_age_range(db: firestore.client, lower: int, upper: int) -> None: 
+def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int) -> list[PatientInfo]: 
     """Pull patient information from Firestorm, given an age range"""
+
+    patients = []
+    count = 0
+
     docs = db.collection("full_fhir").stream()
 
     for doc in docs:
@@ -230,17 +234,23 @@ def get_firestore_age_range(db: firestore.client, lower: int, upper: int) -> Non
                 creation_date=doc._data["creation_date"],
             )
 
-            # An optional step to ensure patient doesn't age - Peter Pan function
-            patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+            # # An optional step to ensure patient doesn't age - Peter Pan function
+            # patient_info = update_retrieved_patient_dob(patient_info=patient_info)
 
-            # FOR TESTING ONLY
-            print(patient_info.first_name)
-            print(patient_info.last_name)
-            print(patient_info.age)
-            print(patient_info.birth_date)
-            print(" ------------------------- ")
+            # # FOR TESTING ONLY
+            # print(patient_info.first_name)
+            # print(patient_info.last_name)
+            # print(patient_info.age)
+            # print(patient_info.birth_date)
+            # print(" ------------------------- ")
 
-            # Return an array of patient objects? vvvv
+            patients.append(patient_info)
+            count += 1
+
+        if count == num_of_patients: break
+
+    # Return an array of patient objects? vvvv
+    return patients
 
 
 if __name__ == "__main__":
