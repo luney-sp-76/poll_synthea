@@ -179,19 +179,32 @@ def parse_fhir_message(fhir_message):
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
-    current_year = date.today().year
+    """Uses the patient's age to calculate their new date of birth"""
 
-    # FOR TESTING PURPOSES ONLY 
-    # current_year += 200
-
+    current_date = date.today()
     creation_date = datetime.datetime.strptime(patient_info.creation_date, "%Y-%m-%d").date()
     birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
 
-    # new year of birth = patients year of birth + (current year - creation date year)
+    # Find days passed since creation date 
+    days_passed = (current_date - creation_date).days
 
-    new_birth_date = birth_date.replace(birth_date.year + (current_year - creation_date.year))
+    # Add the number of days passed to the original birth date, arriving at updated birth date 
+    new_birth_date = birth_date + datetime.timedelta(days=days_passed)
 
-    # Give patient info object new birth year
+    # Give patient_info object new birth date
     patient_info.birth_date = new_birth_date
+
+    return patient_info
+
+
+def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> PatientInfo:
+    """Changes the patient's date of birth and age to the desired age"""
+
+    # Randomises date of birth within age parameters
+    new_birth_date = date.today().replace(year=(date.today().year - desired_age)) \
+                        - datetime.timedelta(days=random.randint(1, 364))
+
+    patient_info.birth_date = new_birth_date
+    patient_info.age = desired_age
 
     return patient_info

@@ -217,6 +217,10 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
             middle_name = None
             if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
 
+            # Handle creation_date 
+            creation_date = None
+            if ("creation_date" in doc._data): creation_date = doc._data["creation_date"]
+
             # Create patient_info object for further use 
             patient_info = PatientInfo(
                 id=doc._data["id"],
@@ -231,25 +235,22 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                 country=doc._data["country"],
                 postal_code=doc._data["postal_code"],
                 age=doc._data["age"],
-                creation_date=doc._data["creation_date"],
+                creation_date=creation_date,
             )
 
-            # # An optional step to ensure patient doesn't age - Peter Pan function
-            # patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+            # Updates date of birth to match recorded 'age' parameter given today's date
+            if creation_date:
+                patient_info = update_retrieved_patient_dob(patient_info=patient_info)
 
-            # # FOR TESTING ONLY
-            # print(patient_info.first_name)
-            # print(patient_info.last_name)
-            # print(patient_info.age)
-            # print(patient_info.birth_date)
-            # print(" ------------------------- ")
+            # To do - provide alternative function to update patients' age parameter given today's date and 
+            # their birth date, allowing them to age 
 
             patients.append(patient_info)
             count += 1
 
         if count == num_of_patients: break
 
-    # Return an array of patient objects? vvvv
+    # Return a list of patients 
     return patients
 
 
