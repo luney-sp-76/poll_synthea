@@ -15,7 +15,8 @@ import segments.create_msh as create_msh
 import segments.create_evn as create_evn
 import segments.create_pv1 as create_pv1
 from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id, \
-    parse_fhir_message, PatientInfo, update_retrieved_patient_age, update_retrieved_patient_dob
+    parse_fhir_message, PatientInfo, update_retrieved_patient_age, update_retrieved_patient_dob, count_patient_records
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -204,18 +205,32 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
 
 
 def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
-    """Pull patient information from Firestorm, given an age range"""
+    """Pull patient information from Firestorm, given an age range
+    
+    Returns a list of patients, or None if not enough patients in the database match the details 
+    
+    """
 
     patients = []
-    count = 0
+    count = count_patient_records(db, lower, upper, peter_pan)
 
-    # To do: improve the streaming process to only include, e.g., those with creation dates if peter_pan is True, 
-    #        records within a specified range, ...
+    # If there are enough patients...
+    if (count >= num_of_patients):
 
-    docs = db.collection("full_fhir").stream()
+        # Form the stream based on criteria 
+        if peter_pan:
+            docs = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
+                                                .where(filter=FieldFilter("age", ">=", lower))\
+                                                .order_by("creation_date")\
+                                                .stream()
+        else:
+            docs = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
+                                                .where(filter=FieldFilter("age", ">=", lower))\
+                                                .limit(num_of_patients)\
+                                                .stream()
 
-    for doc in docs:
-        if ((doc._data["age"] >= lower) and (doc._data["age"] <= upper)):
+        # Stream the patient docs 
+        for doc in docs:
 
             # Handle middle name 
             middle_name = None
@@ -244,22 +259,17 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
 
             # Matches age with dob - method for doing so depends on the peter_pan bool
             if peter_pan:
-                try:
-                    assert(patient_info.creation_date)
-                    patient_info = update_retrieved_patient_dob(patient_info=patient_info)
-                except:
-                    print(f"Patient {patient_info.id} does not have creation date, changing age attribute...")
-                    patient_info = update_retrieved_patient_age(patient_info=patient_info)
+                patient_info = update_retrieved_patient_dob(patient_info=patient_info)
             else: 
                 patient_info = update_retrieved_patient_age(patient_info=patient_info)
 
             patients.append(patient_info)
-            count += 1
 
-        if count == num_of_patients: break
-
-    # Return a list of patients 
-    return patients
+        # Return a list of patients 
+        return patients
+    else: 
+        print(f"Request denied - database only has {count} matching patients.")
+        return None
 
 
 if __name__ == "__main__":

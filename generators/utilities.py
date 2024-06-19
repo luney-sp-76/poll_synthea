@@ -5,6 +5,9 @@ from datetime import date, datetime
 import datetime
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
+from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1 import aggregation
 
 # generate a random time for the OBR segment
 def create_obr_time():
@@ -217,3 +220,27 @@ def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> Patien
     patient_info.age = desired_age
 
     return patient_info
+
+
+def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pan: bool) -> int:
+    """Counts the number of patient records that match the age requirements specified"""
+
+    # Form the query based on peter_pan bool 
+    if peter_pan:
+        query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
+                                                .where(filter=FieldFilter("age", ">=", lower))\
+                                                .order_by("creation_date")
+    else:
+        query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
+                                                .where(filter=FieldFilter("age", ">=", lower))
+    
+    aggregate_query = aggregation.AggregationQuery(query)
+
+    # `alias` to provides a key for accessing the aggregate query results
+    aggregate_query.count(alias="all")
+
+    # Get the number of patient records which fit the criteria
+    results = aggregate_query.get()
+    count = results[0][0].value
+
+    return count
