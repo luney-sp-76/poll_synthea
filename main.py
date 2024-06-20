@@ -1,12 +1,14 @@
 # Author Paul Olphert 2023
 
 # This file contains the code to Build an HL7 message from FHIR data and create a patient in Firestore
+from datetime import date, datetime
 import logging
 import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import date, datetime
 from pathlib import Path
+from generators.utilities import create_control_id, create_filler_order_num, create_placer_order_num, \
+    get_firestore_age_range, parse_fhir_message, PatientInfo
 from hl7apy import core
 import segments.create_pid as create_pid
 import segments.create_obr as create_obr
@@ -14,9 +16,7 @@ import segments.create_orc as create_orc
 import segments.create_msh as create_msh
 import segments.create_evn as create_evn
 import segments.create_pv1 as create_pv1
-from generators.utilities import create_placer_order_num, create_filler_order_num, create_control_id, \
-    parse_fhir_message, PatientInfo, update_retrieved_patient_age, update_retrieved_patient_dob, count_patient_records
-from google.cloud.firestore_v1.base_query import FieldFilter
+from pathlib import Path
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -43,6 +43,7 @@ def create_message_header(patient_info, messageType):
 
     return hl7
 
+
 # Creates an HL7 ADT message includes the MSH segment then options based on message type then returns an HL7 message
 def create_adt_message(patient_info, messageType):
     hl7 = create_message_header(patient_info, messageType)
@@ -51,6 +52,7 @@ def create_adt_message(patient_info, messageType):
     hl7 = create_pv1.create_pv1(patient_info, hl7)
   
     return hl7
+
 
 # Creates an HL7 ORM message includes the MSH segment then options based on message type then returns an HL7 message
 def create_orm_message(patient_info, messageType):
@@ -63,6 +65,7 @@ def create_orm_message(patient_info, messageType):
     hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
 
     return hl7
+
 
 # Creates an HL7 ORU message includes the MSH segment then options based on message type then returns an HL7 message
 def create_oru_message(patient_info, messageType):
@@ -176,7 +179,6 @@ def initialize_firestore() -> firestore.client:
             print("No Firebase credentials found. Exiting.")
             exit(1)
 
-
     
 def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
         """Save patient info to Firestore."""
@@ -204,72 +206,24 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
             logging.info(f"Added patient with ID {patient_id} to Firestore.")
 
 
-def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
-    """Pull patient information from Firestorm, given an age range
-    
-    Returns a list of patients, or None if not enough patients in the database match the details 
-    
-    """
+def produce_ADT_A01_from_firestore(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> None: 
 
-    patients = []
-    count = count_patient_records(db, lower, upper, peter_pan)
+    patients: list[PatientInfo] = get_firestore_age_range(db, num_of_patients, lower, upper, peter_pan)
 
-    # If there are enough patients...
-    if (count >= num_of_patients):
+    for patient in patients: 
 
-        # Form the stream based on criteria 
-        if peter_pan:
-            docs = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                                .where(filter=FieldFilter("age", ">=", lower))\
-                                                .order_by("creation_date")\
-                                                .stream()
-        else:
-            docs = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                                .where(filter=FieldFilter("age", ">=", lower))\
-                                                .limit(num_of_patients)\
-                                                .stream()
+        if (not peter_pan):
+            patient.birth_date = datetime.strptime(patient.birth_date, "%Y-%m-%d").date()
 
-        # Stream the patient docs 
-        for doc in docs:
+        hl7_message = create_adt_message(patient, "ADT_A01")
+        print("Generated HL7 message:", str(hl7_message))
 
-            # Handle middle name 
-            middle_name = None
-            if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
-
-            # Handle creation_date 
-            creation_date = None
-            if ("creation_date" in doc._data): creation_date = doc._data["creation_date"]
-
-            # Create patient_info object for further use 
-            patient_info = PatientInfo(
-                id=doc._data["id"],
-                birth_date=doc._data["birth_date"],
-                gender=doc._data["gender"],
-                ssn=doc._data["ssn"],
-                first_name=doc._data["first_name"],
-                middle_name=middle_name,
-                last_name=doc._data["last_name"],
-                city=doc._data["city"],
-                state=doc._data["state"],
-                country=doc._data["country"],
-                postal_code=doc._data["postal_code"],
-                age=doc._data["age"],
-                creation_date=creation_date,
-            )
-
-            # Matches age with dob - method for doing so depends on the peter_pan bool
-            if peter_pan:
-                patient_info = update_retrieved_patient_dob(patient_info=patient_info)
-            else: 
-                patient_info = update_retrieved_patient_age(patient_info=patient_info)
-
-            patients.append(patient_info)
-
-        # Return a list of patients 
-        return patients
-    else: 
-        print(f"Request denied - database only has {count} matching patients.")
-        return None
+        hl7_file_path = hl7_folder_path / f"{patient.id}.hl7"
+        with open(hl7_file_path, "w") as hl7_file:
+            hl7_file.write(str(hl7_message.msh.value) + "\r")
+            hl7_file.write(str(hl7_message.evn.value) + "\r")
+            hl7_file.write(str(hl7_message.pid.value) + "\r")
+            hl7_file.write(str(hl7_message.pv1.value) + "\r")
 
 
 if __name__ == "__main__":

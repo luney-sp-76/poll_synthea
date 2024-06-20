@@ -1,11 +1,10 @@
 # utilities.py
-import random
-import string
+import random, string, datetime
 from datetime import date, datetime
 import datetime
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
-from firebase_admin import credentials, firestore
+from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1 import aggregation
 
@@ -16,6 +15,7 @@ def create_obr_time():
 
     return random_date.strftime("%Y%m%d%H%M")
 
+
 # generate a random placer order number for the HL7 message
 def create_placer_order_num():
     order_id = "".join(
@@ -25,6 +25,7 @@ def create_placer_order_num():
     )
     return order_id
 
+
 # generate a random filler order number for the HL7 message
 def create_filler_order_num():
     # allocate a random number between 1 and 999999999
@@ -32,6 +33,7 @@ def create_filler_order_num():
     # format the random number as 1^^23^4
     filler_order_id = f"1^^{random_number // 10000}^{random_number % 10000}"
     return filler_order_id
+
 
 # Creates a random visit institution for the HL7 message
 def create_visit_instiution():
@@ -42,10 +44,12 @@ def create_visit_instiution():
     )
     return visit_institution
 
+
 # Creates a random visit number for the HL7 message
 def create_visit_number():
     visit_number = "".join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)])
     return visit_number
+
 
 # Creates a random control ID for the HL7 message
 def create_control_id():
@@ -54,6 +58,8 @@ def create_control_id():
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
     return control_id
 
+
+# Creates a random patient ID for the patient 
 def create_patient_id():
     alphanumeric = "".join(
         ["{}".format(random.choice(string.ascii_uppercase + string.digits)) for _ in range(0, 8)]
@@ -181,6 +187,86 @@ def parse_fhir_message(fhir_message):
     return patient_info
 
 
+def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
+    """Pull patient information from Firestorm, given an age range
+    
+    Returns a list of patients, or None if not enough patients in the database match the details 
+    
+    """
+
+    patients = []
+    count = count_patient_records(db, lower, upper, peter_pan)
+
+    # If there are enough patients...
+    if (count >= num_of_patients):
+
+        # Form the stream based on criteria - need to update this process to check dob as well
+        if peter_pan:
+            docs = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
+                                                .where(filter=FieldFilter("age", ">=", lower))\
+                                                .order_by("creation_date")\
+                                                .limit(num_of_patients)\
+                                                .stream()
+        else:
+
+            # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
+            current_date = date.today()
+
+            # If they are X years old today, their DOB will fall between these ranges
+            lower_year = current_date.year - lower
+            upper_dob = current_date.replace(year=lower_year)
+            upper_year = current_date.year - upper 
+            lower_dob = current_date.replace(year=upper_year)
+
+            # Find all records between the two valid DOBs
+            docs = db.collection("full_fhir").where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
+                                            .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))\
+                                            .limit(num_of_patients)\
+                                            .stream()
+
+        # Stream the patient docs 
+        for doc in docs:
+
+            # Handle middle name 
+            middle_name = None
+            if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
+
+            # Handle creation_date 
+            creation_date = None
+            if ("creation_date" in doc._data): creation_date = doc._data["creation_date"]
+
+            # Create patient_info object for further use 
+            patient_info = PatientInfo(
+                id=doc._data["id"],
+                birth_date=doc._data["birth_date"],
+                gender=doc._data["gender"],
+                ssn=doc._data["ssn"],
+                first_name=doc._data["first_name"],
+                middle_name=middle_name,
+                last_name=doc._data["last_name"],
+                city=doc._data["city"],
+                state=doc._data["state"],
+                country=doc._data["country"],
+                postal_code=doc._data["postal_code"],
+                age=doc._data["age"],
+                creation_date=creation_date,
+            )
+
+            # Matches age with dob - method for doing so depends on the peter_pan bool
+            if peter_pan:
+                patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+            else: 
+                patient_info = update_retrieved_patient_age(patient_info=patient_info)
+
+            patients.append(patient_info)
+
+        # Return a list of patients 
+        return patients
+    else: 
+        print(f"Request denied - database only has {count} matching patients.")
+        return None
+
+
 def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
     """Uses the patient's age to calculate their new date of birth"""
 
@@ -223,16 +309,30 @@ def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> Patien
 
 
 def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pan: bool) -> int:
-    """Counts the number of patient records that match the age requirements specified"""
+    """Counts the number of patient records that match the age requirements specified
+    """
 
     # Form the query based on peter_pan bool 
     if peter_pan:
+
+        # We can simply collect patients using 'age', as will be changing their dob to match
         query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                                .where(filter=FieldFilter("age", ">=", lower))\
-                                                .order_by("creation_date")
+                                            .where(filter=FieldFilter("age", ">=", lower))\
+                                            .order_by("creation_date")
     else:
-        query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                                .where(filter=FieldFilter("age", ">=", lower))
+
+        # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
+        current_date = date.today()
+
+        # If they are X years old today, their DOB will fall between these ranges
+        lower_year = current_date.year - lower
+        upper_dob = current_date.replace(year=lower_year)
+        upper_year = current_date.year - upper 
+        lower_dob = current_date.replace(year=upper_year)
+
+        # Find all records between the two valid DOBs
+        query = db.collection("full_fhir").where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
+                                            .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
     
     aggregate_query = aggregation.AggregationQuery(query)
 
