@@ -15,7 +15,7 @@ class Test(unittest.TestCase):
         num_of_patients = 4
         lower_bound = 10
         upper_bound = 20
-        peter_pan = False
+        peter_pan = True
 
         patients: list[PatientInfo] = get_firestore_age_range(db=firestore, num_of_patients=num_of_patients, \
                                                               lower=lower_bound, upper=upper_bound, peter_pan=peter_pan)
@@ -48,7 +48,7 @@ class Test(unittest.TestCase):
 
         num_of_patients = 5
         new_age = 20
-        peter_pan = False
+        peter_pan = True
 
         patients: list[PatientInfo] = get_firestore_age_range(db=firestore, num_of_patients=num_of_patients, \
                                                               lower=10, upper=100, peter_pan=peter_pan)
@@ -72,9 +72,9 @@ class Test(unittest.TestCase):
 
         lower = 10
         upper = 20
-        peter_pan = False
+        peter_pan = True
 
-        count = count_patient_records(db=firestore, lower=lower, upper=upper, peter_pan=peter_pan)
+        count, _ = count_patient_records(db=firestore, lower=lower, upper=upper, peter_pan=peter_pan)
 
         self.assertIsInstance(count, numbers.Number)
 
@@ -89,11 +89,11 @@ class Test(unittest.TestCase):
         num_of_patients = 5
         lower = 10
         upper = 100
-        peter_pan = False
+        peter_pan = True
 
         num_files_before = len([name for name in os.listdir(hl7_folder_path)])
 
-        produce_ADT_A01_from_firestore(db=firestore, num_of_patients=num_of_patients, \
+        status = produce_ADT_A01_from_firestore(db=firestore, num_of_patients=num_of_patients, \
                                        lower=lower, upper=upper, peter_pan=peter_pan)
 
         # Test to see if there are 'num_of_patients' more files in the folder after function runs
@@ -104,6 +104,7 @@ class Test(unittest.TestCase):
         # as there is a chance files with the same name will be produced, overwriting existing HL7 files, 
         # and leaving the total number of files within the folder unchanged!
         self.assertEqual(num_files_before + num_of_patients, num_files_after)
+        self.assertTrue(status)
 
 
 if __name__ == '__main__':

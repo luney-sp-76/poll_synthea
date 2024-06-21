@@ -4,6 +4,9 @@
 #ignore the synthea.jar file
 synthea-with-dependencies.jar
 
+# Ignore tasks file 
+tasks.todo
+
 #firebase
 /firebase/*
 /firebase/pollsynthea-firebase-adminsdk-j01m1-bb3600d47d.json

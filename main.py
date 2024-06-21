@@ -206,24 +206,33 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
             logging.info(f"Added patient with ID {patient_id} to Firestore.")
 
 
-def produce_ADT_A01_from_firestore(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> None: 
+def produce_ADT_A01_from_firestore(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> bool: 
+    """Produces an ADT_A01 message for each patient record retrieved from firestore. 
+    
+    The HL7 messages are saved in the 'hl7_folder_path' using patientID as filename. 
 
+    """
     patients: list[PatientInfo] = get_firestore_age_range(db, num_of_patients, lower, upper, peter_pan)
 
-    for patient in patients: 
+    if patients:
+        for patient in patients: 
 
-        if (not peter_pan):
-            patient.birth_date = datetime.strptime(patient.birth_date, "%Y-%m-%d").date()
+            if (not peter_pan):
+                patient.birth_date = datetime.strptime(patient.birth_date, "%Y-%m-%d").date()
 
-        hl7_message = create_adt_message(patient, "ADT_A01")
-        print("Generated HL7 message:", str(hl7_message))
+            hl7_message = create_adt_message(patient, "ADT_A01")
+            print("Generated HL7 message:", str(hl7_message))
 
-        hl7_file_path = hl7_folder_path / f"{patient.id}.hl7"
-        with open(hl7_file_path, "w") as hl7_file:
-            hl7_file.write(str(hl7_message.msh.value) + "\r")
-            hl7_file.write(str(hl7_message.evn.value) + "\r")
-            hl7_file.write(str(hl7_message.pid.value) + "\r")
-            hl7_file.write(str(hl7_message.pv1.value) + "\r")
+            hl7_file_path = hl7_folder_path / f"{patient.id}.hl7"
+            with open(hl7_file_path, "w") as hl7_file:
+                hl7_file.write(str(hl7_message.msh.value) + "\r")
+                hl7_file.write(str(hl7_message.evn.value) + "\r")
+                hl7_file.write(str(hl7_message.pid.value) + "\r")
+                hl7_file.write(str(hl7_message.pv1.value) + "\r")
+        
+        return True 
+    else: 
+        return False 
 
 
 if __name__ == "__main__":

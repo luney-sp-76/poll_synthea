@@ -188,41 +188,22 @@ def parse_fhir_message(fhir_message):
 
 
 def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
-    """Pull patient information from Firestorm, given an age range
+    """Pull patient information from Firestorm, given an age range.
+
+    If peter_pan is set to true, patients will have their DOBs changed to match their age at time of creation.
+    If false, their age will be updated using their DOB. 
     
-    Returns a list of patients, or None if not enough patients in the database match the details 
+    Returns a list of patients, or None if not enough patients in the database match the parameters provided.
     
     """
 
     patients = []
-    count = count_patient_records(db, lower, upper, peter_pan)
+    count, query = count_patient_records(db, lower, upper, peter_pan)
 
     # If there are enough patients...
     if (count >= num_of_patients):
 
-        # Form the stream based on criteria - need to update this process to check dob as well
-        if peter_pan:
-            docs = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                                .where(filter=FieldFilter("age", ">=", lower))\
-                                                .order_by("creation_date")\
-                                                .limit(num_of_patients)\
-                                                .stream()
-        else:
-
-            # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
-            current_date = date.today()
-
-            # If they are X years old today, their DOB will fall between these ranges
-            lower_year = current_date.year - lower
-            upper_dob = current_date.replace(year=lower_year)
-            upper_year = current_date.year - upper 
-            lower_dob = current_date.replace(year=upper_year)
-
-            # Find all records between the two valid DOBs
-            docs = db.collection("full_fhir").where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
-                                            .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))\
-                                            .limit(num_of_patients)\
-                                            .stream()
+        docs = query.limit(num_of_patients).stream()
 
         # Stream the patient docs 
         for doc in docs:
@@ -238,6 +219,8 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
             # Create patient_info object for further use 
             patient_info = PatientInfo(
                 id=doc._data["id"],
+
+                # Consider simply converting birth date at this point instead of throughout
                 birth_date=doc._data["birth_date"],
                 gender=doc._data["gender"],
                 ssn=doc._data["ssn"],
@@ -263,7 +246,7 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
         # Return a list of patients 
         return patients
     else: 
-        print(f"Request denied - database only has {count} matching patients.")
+        print(f"Patient retrieval failed - database only has {count} matching patient(s).")
         return None
 
 
@@ -280,9 +263,7 @@ def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
     # Add the number of days passed to the original birth date, arriving at updated birth date 
     new_birth_date = birth_date + datetime.timedelta(days=days_passed)
 
-    # Give patient_info object new birth date
     patient_info.birth_date = new_birth_date
-
     return patient_info
 
 
@@ -290,7 +271,7 @@ def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
     """Changes the patient's age to match their date of birth"""
 
     birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
-    patient_info.age = calculate_age(birth_date)
+    patient_info.age = calculate_age(birth_date=birth_date)
 
     return patient_info
 
@@ -308,8 +289,10 @@ def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> Patien
     return patient_info
 
 
-def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pan: bool) -> int:
-    """Counts the number of patient records that match the age requirements specified
+def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pan: bool) -> tuple[int | float, any]:
+    """Counts the number of patient records that match the age requirements specified. 
+
+    Returns both the count of the patients in the db, and the query used in the check. 
     """
 
     # Form the query based on peter_pan bool 
@@ -327,6 +310,7 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
         # If they are X years old today, their DOB will fall between these ranges
         lower_year = current_date.year - lower
         upper_dob = current_date.replace(year=lower_year)
+
         upper_year = current_date.year - upper 
         lower_dob = current_date.replace(year=upper_year)
 
@@ -343,4 +327,4 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     results = aggregate_query.get()
     count = results[0][0].value
 
-    return count
+    return count, query
