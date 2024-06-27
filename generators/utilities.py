@@ -1,12 +1,19 @@
 # utilities.py
+import logging
+from pathlib import Path
 import random, string, datetime
 from datetime import date, datetime
 import datetime
+import time
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
 from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1 import aggregation
+from poll_synthea import call_for_patients
+BASE_DIR = Path.cwd()
+work_folder_path = BASE_DIR / "Work"
+hl7_folder_path = BASE_DIR / "HL7_v2"
 
 # generate a random time for the OBR segment
 def create_obr_time():
@@ -188,66 +195,100 @@ def parse_fhir_message(fhir_message):
 
 
 def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
-    """Pull patient information from Firestorm, given an age range.
+    """
+    Pull patient information from Firestorm, given an age range. If not enough patients exist in the firestore, 
+    they will be generated using poll_synthea and the HL7 processor. 
 
     If peter_pan is set to true, patients will have their DOBs changed to match their age at time of creation.
     If false, their age will be updated using their DOB. 
     
-    Returns a list of patients, or None if not enough patients in the database match the parameters provided.
+    Returns a list of patients.
     
     """
 
     patients = []
-    count, query = count_patient_records(db, lower, upper, peter_pan)
+    uploaded_patients = []
 
-    # If there are enough patients...
-    if (count >= num_of_patients):
+    while (len(patients) == 0):
+        count, query = count_patient_records(db, lower, upper, peter_pan)
 
-        docs = query.limit(num_of_patients).stream()
+        # If there are enough patients...
+        if (count >= num_of_patients):
 
-        # Stream the patient docs 
-        for doc in docs:
+            docs = query.limit(num_of_patients).stream()
 
-            # Handle middle name 
-            middle_name = None
-            if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
+            # Stream the patient docs 
+            for doc in docs:
 
-            # Handle creation_date 
-            creation_date = None
-            if ("creation_date" in doc._data): creation_date = doc._data["creation_date"]
+                # Handle middle name 
+                middle_name = None
+                if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
 
-            # Create patient_info object for further use 
-            patient_info = PatientInfo(
-                id=doc._data["id"],
+                # Handle creation_date 
+                creation_date = None
+                if ("creation_date" in doc._data): creation_date = doc._data["creation_date"]
 
-                # Consider simply converting birth date at this point instead of throughout
-                birth_date=doc._data["birth_date"],
-                gender=doc._data["gender"],
-                ssn=doc._data["ssn"],
-                first_name=doc._data["first_name"],
-                middle_name=middle_name,
-                last_name=doc._data["last_name"],
-                city=doc._data["city"],
-                state=doc._data["state"],
-                country=doc._data["country"],
-                postal_code=doc._data["postal_code"],
-                age=doc._data["age"],
-                creation_date=creation_date,
-            )
+                # Create patient_info object for further use 
+                patient_info = PatientInfo(
+                    id=doc._data["id"],
 
-            # Matches age with dob - method for doing so depends on the peter_pan bool
-            if peter_pan:
-                patient_info = update_retrieved_patient_dob(patient_info=patient_info)
-            else: 
-                patient_info = update_retrieved_patient_age(patient_info=patient_info)
+                    # Consider simply converting birth date at this point instead of throughout
+                    birth_date=doc._data["birth_date"],
+                    gender=doc._data["gender"],
+                    ssn=doc._data["ssn"],
+                    first_name=doc._data["first_name"],
+                    middle_name=middle_name,
+                    last_name=doc._data["last_name"],
+                    city=doc._data["city"],
+                    state=doc._data["state"],
+                    country=doc._data["country"],
+                    postal_code=doc._data["postal_code"],
+                    age=doc._data["age"],
+                    creation_date=creation_date,
+                )
 
-            patients.append(patient_info)
+                # Matches age with dob - method for doing so depends on the peter_pan bool
+                if peter_pan:
+                    patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+                else: 
+                    patient_info = update_retrieved_patient_age(patient_info=patient_info)
 
-        # Return a list of patients 
-        return patients
-    else: 
-        print(f"Patient retrieval failed - database only has {count} matching patient(s).")
-        return None
+                patients.append(patient_info)
+
+            # Return a list of patients     
+            return patients
+        
+        else: 
+            print(f"Database only has {count} matching patient(s) - generating new patients...")
+
+            # Rerun synthea for x patients and then poll again - TO DO 
+            info = {
+                "number_of_patients": int(num_of_patients - count),
+                "age_from": lower, 
+                "age_to": upper, 
+                "sex": "F"
+            }
+
+            # Generate patients using poll_synthea
+            call_for_patients(info=info)
+
+            # Iterate through FHIR JSON files in the work folder
+            for file in work_folder_path.glob("*.json"):
+                if file.name not in uploaded_patients:
+                    try: 
+                        with open(file, "r") as f:
+                            fhir_message = f.read()
+
+                            # Parse patient information from file 
+                            patient_info = parse_fhir_message(fhir_message)
+                            save_to_firestore(db=db, patient_info=patient_info)
+                            uploaded_patients.append(file.name)
+                    except UnicodeDecodeError as e:
+                        print("Problem reading file...")
+                        print(e)
+                    except Exception as e: 
+                        print("Couldn't parse patient information from fhir message...")
+                        time.sleep(3)
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
@@ -280,6 +321,9 @@ def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> Patien
     """Changes the patient's date of birth and age to the desired age"""
 
     # Randomises date of birth within age parameters
+
+    # TO DO - 01/01 DOB
+
     new_birth_date = date.today().replace(year=(date.today().year - desired_age)) \
                         - datetime.timedelta(days=random.randint(1, 364))
 
@@ -296,6 +340,7 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     """
 
     # Form the query based on peter_pan bool 
+    # Add creation date if not found - TO DO
     if peter_pan:
 
         # We can simply collect patients using 'age', as will be changing their dob to match
@@ -328,3 +373,31 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     count = results[0][0].value
 
     return count, query
+
+
+def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
+        """Save patient info to Firestore."""
+        patient_id = patient_info.id
+        patient_ref = db.collection("full_fhir").document(patient_id)
+        if patient_ref.get().exists:
+            print(
+                f"Patient with ID {patient_id} already exists in Firestore. Skipping."
+            )
+        else:
+            patient_data = {
+                "id": patient_info.id,
+                "birth_date": patient_info.birth_date.isoformat(),
+                "city": patient_info.city,
+                "country": patient_info.country,
+                "first_name": patient_info.first_name,
+                "gender": patient_info.gender,
+                "last_name": patient_info.last_name,
+                "postal_code":patient_info.postal_code,
+                "ssn":patient_info.ssn,
+                "state":patient_info.state,
+                "age":patient_info.age,
+                "creation_date":patient_info.creation_date.isoformat(),
+            }
+            patient_ref.set(patient_data)
+            print(f"Added patient with ID {patient_id} to Firestore.")
+

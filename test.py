@@ -1,4 +1,4 @@
-from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore
+from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore, produce_OML_O21_from_firestore
 from generators.utilities import PatientInfo, assign_age_to_patient, calculate_age, count_patient_records
 import unittest, datetime, numbers, os, os.path
 
@@ -105,6 +105,36 @@ class Test(unittest.TestCase):
         # and leaving the total number of files within the folder unchanged!
         self.assertEqual(num_files_before + num_of_patients, num_files_after)
         self.assertTrue(status)
+
+
+    def test_production_of_OML_021(self):
+
+        hl7_messages = produce_OML_O21_from_firestore(db=firestore, num_of_patients=3, age=30, assign_age=True)
+
+        for hl7_message in hl7_messages:
+
+            # Display HL7 message
+            print("-------------------")
+            print(hl7_message.msh.value)
+            print(hl7_message.pid.value)
+            print(hl7_message.orc.value)
+            print(hl7_message.obr.value)
+            print("-----------------\n")
+
+
+    def test_generation_of_patients_following_low_count(self):
+        num_of_patients = 18
+        lower = 11
+        upper = 12
+        peter_pan = False
+        patients = None 
+
+        patients = get_firestore_age_range(firestore, num_of_patients, lower, upper, peter_pan)
+
+        for patient in patients: 
+            print (patient.first_name)
+
+        self.assertEqual(len(patients), num_of_patients)
 
 
 if __name__ == '__main__':

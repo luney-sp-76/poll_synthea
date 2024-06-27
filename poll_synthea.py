@@ -187,12 +187,27 @@ def get_valid_sex_input():
         
 
 #TODO: Add and test sex of patient
-def call_for_patients():
-    number_of_patients = get_valid_positive_integer_input()
-    age_from = get_valid_lower_positive_integer_input()
-    age_to = get_valid_upper_positive_integer_input()
-    age = f"{age_from}-{age_to}" 
-    sex = get_valid_sex_input()
+def call_for_patients(info=None):
+    """
+    Generates a number of patients of a certain sex within an age range 
+
+    Optional args: info: dict{number_of_patients, age_from, age_to, sex}
+    """
+
+    if info:
+        number_of_patients = info["number_of_patients"]
+        age_from = info["age_from"]
+        age_to = info["age_to"]
+        age = f"{age_from}-{age_to}" 
+        sex = info["sex"]
+    else:
+        number_of_patients = get_valid_positive_integer_input()
+        age_from = get_valid_lower_positive_integer_input()
+        age_to = get_valid_upper_positive_integer_input()
+        age = f"{age_from}-{age_to}" 
+        sex = get_valid_sex_input()
+
+
     print(age)
     print(sex)
     run_synthea(number_of_patients, age, sex)
