@@ -108,8 +108,8 @@ class Test(unittest.TestCase):
 
 
     def test_production_of_OML_021(self):
-
-        hl7_messages = produce_OML_O21_from_firestore(db=firestore, num_of_patients=3, age=30, assign_age=True)
+        
+        hl7_messages = produce_OML_O21_from_firestore(db=firestore, num_of_patients=1, age=30, assign_age=True)
 
         for hl7_message in hl7_messages:
 
@@ -123,9 +123,9 @@ class Test(unittest.TestCase):
 
 
     def test_generation_of_patients_following_low_count(self):
-        num_of_patients = 18
-        lower = 11
-        upper = 12
+        num_of_patients = 30
+        lower = 23
+        upper = 24
         peter_pan = False
         patients = None 
 

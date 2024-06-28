@@ -224,9 +224,11 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                 middle_name = None
                 if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
 
-                # Handle creation_date 
-                creation_date = None
-                if ("creation_date" in doc._data): creation_date = doc._data["creation_date"]
+                # Handle creation date - if patient doesn't have one, then assign today's date
+                if ("creation_date" in doc._data): 
+                    creation_date = doc._data["creation_date"]
+                else: 
+                    creation_date = date.today().isoformat()
 
                 # Create patient_info object for further use 
                 patient_info = PatientInfo(
@@ -261,7 +263,6 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
         else: 
             print(f"Database only has {count} matching patient(s) - generating new patients...")
 
-            # Rerun synthea for x patients and then poll again - TO DO 
             info = {
                 "number_of_patients": int(num_of_patients - count),
                 "age_from": lower, 
@@ -291,8 +292,12 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                         time.sleep(3)
 
 
-def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
-    """Uses the patient's age to calculate their new date of birth"""
+def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
+    """Uses the patient's creation date to calculate their new date of birth. 
+    
+    This function is called if patients are retrieved with the 'peter_pan' bool 
+    set to true. 
+    """
 
     current_date = date.today()
     creation_date = datetime.datetime.strptime(patient_info.creation_date, "%Y-%m-%d").date()
@@ -305,11 +310,17 @@ def update_retrieved_patient_dob(patient_info: PatientInfo) -> PatientInfo:
     new_birth_date = birth_date + datetime.timedelta(days=days_passed)
 
     patient_info.birth_date = new_birth_date
+    patient_info.age = calculate_age(new_birth_date)
+
     return patient_info
 
 
 def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
-    """Changes the patient's age to match their date of birth"""
+    """Changes the patient's age to match their date of birth.
+    
+    This function is called if patients are retrieved with the 'peter_pan' bool 
+    set to false. 
+    """
 
     birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
     patient_info.age = calculate_age(birth_date=birth_date)
@@ -320,12 +331,9 @@ def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
 def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> PatientInfo:
     """Changes the patient's date of birth and age to the desired age"""
 
-    # Randomises date of birth within age parameters
+    # Sets year of birth to appropriate year; day and month are both '01' to simplify references
 
-    # TO DO - 01/01 DOB
-
-    new_birth_date = date.today().replace(year=(date.today().year - desired_age)) \
-                        - datetime.timedelta(days=random.randint(1, 364))
+    new_birth_date = date.today().replace(year=(date.today().year - desired_age), month=1, day=1)
 
     patient_info.birth_date = new_birth_date
     patient_info.age = desired_age
@@ -340,13 +348,11 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     """
 
     # Form the query based on peter_pan bool 
-    # Add creation date if not found - TO DO
     if peter_pan:
 
         # We can simply collect patients using 'age', as will be changing their dob to match
         query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                            .where(filter=FieldFilter("age", ">=", lower))\
-                                            .order_by("creation_date")
+                                            .where(filter=FieldFilter("age", ">=", lower))
     else:
 
         # We need to calculate the appropriate dob ranges; we can't search by age as we will change this

@@ -186,7 +186,6 @@ def get_valid_sex_input():
             print("Please enter M or F")
         
 
-#TODO: Add and test sex of patient
 def call_for_patients(info=None):
     """
     Generates a number of patients of a certain sex within an age range 
@@ -213,4 +212,4 @@ def call_for_patients(info=None):
     run_synthea(number_of_patients, age, sex)
 
 
-#call_for_patients()
+# call_for_patients()

@@ -26,7 +26,7 @@ def create_msh(messageType, control_id, hl7, current_date):
         hl7.msh.msh_9 = messageTypeSegment  # Message Type
         hl7.msh.msh_10 = control_id  # Message Control ID
         hl7.msh.msh_11 = "T"  # Processing ID
-        hl7.msh.msh_12 = "2.3"  # Version ID
+        hl7.msh.msh_12 = "2.4"  # Version ID
         hl7.msh.msh_15 = "AL"  # Accept Acknowledgment Type
         hl7.msh.msh_16 = "NE"  # Application Acknowledgment Type
     except Exception as ae:

@@ -23,7 +23,7 @@ work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
 
 # Creates an HL7 MSH segment and returns the HL7 message this must be called first to create the HL7 message
-def create_message_header(patient_info, messageType):
+def create_message_header(messageType):
     global BASE_DIR
     current_date = date.today()
 
@@ -47,7 +47,7 @@ def create_message_header(patient_info, messageType):
 
 # Creates an HL7 ADT message includes the MSH segment then options based on message type then returns an HL7 message
 def create_adt_message(patient_info, messageType):
-    hl7 = create_message_header(patient_info, messageType)
+    hl7 = create_message_header(messageType)
     hl7 = create_evn.create_evn(hl7)
     hl7 = create_pid.create_pid(patient_info, hl7)
     hl7 = create_pv1.create_pv1(patient_info, hl7)
@@ -57,7 +57,7 @@ def create_adt_message(patient_info, messageType):
 
 # Creates an HL7 ORM message includes the MSH segment then options based on message type then returns an HL7 message
 def create_orm_message(patient_info, messageType):
-    hl7 = create_message_header(patient_info, messageType)
+    hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7)
     hl7 = create_pv1.create_pv1(patient_info, hl7)
     placer_order_num = create_placer_order_num()
@@ -70,7 +70,7 @@ def create_orm_message(patient_info, messageType):
 
 # Creates an HL7 ORU message includes the MSH segment then options based on message type then returns an HL7 message
 def create_oru_message(patient_info, messageType):
-    hl7 = create_message_header(patient_info, messageType)
+    hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7)
     hl7 = create_pv1.create_pv1(patient_info, hl7)
     placer_order_num = create_placer_order_num()
@@ -82,7 +82,7 @@ def create_oru_message(patient_info, messageType):
 
 
 def create_oml_message(patient_info, messageType):
-    hl7 = create_message_header(patient_info, messageType)
+    hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7)
     placer_order_num = create_placer_order_num()
     filler_order_id = "24325-3^Liver^Function^Test"
