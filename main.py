@@ -227,9 +227,6 @@ def produce_ADT_A01_from_firestore(db: firestore.client, num_of_patients: int, l
     if patients:
         for patient in patients: 
 
-            if (not peter_pan):
-                patient.birth_date = datetime.strptime(patient.birth_date, "%Y-%m-%d").date()
-
             hl7_message = create_adt_message(patient, "ADT_A01")
 
             # Testing purposes 
@@ -256,8 +253,8 @@ def produce_OML_O21_from_firestore(db: firestore.client, num_of_patients: int, a
 
     if assign_age:
         patients: list[PatientInfo] = get_firestore_age_range(db=db, num_of_patients=num_of_patients, lower=1, upper=100, peter_pan=True)
-        for patient in patients: 
-            patient = assign_age_to_patient(patient_info=patient, desired_age=age)
+        for i, patient in enumerate(patients): 
+            patient = assign_age_to_patient(patient_info=patient, desired_age=age, index=i)
     else:
         patients: list[PatientInfo] = get_firestore_age_range(db=db, num_of_patients=num_of_patients, lower=age, upper=age, peter_pan=True)
 

@@ -1,9 +1,25 @@
+import psutil
 from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore, produce_OML_O21_from_firestore
 from generators.utilities import PatientInfo, assign_age_to_patient, calculate_age, count_patient_records
 import unittest, datetime, numbers, os, os.path
+# from dummy_client import send_ORU_R01
+# from tcp_server import run_tcp_server, HL7_FILE_PATH
+# import time 
+# from pathlib import Path
+# import subprocess
 
 
 class Test(unittest.TestCase):
+    """
+    The main class which holds all unit tests. 
+
+    To run an individual test, simply run the file.
+
+    To run an individual test, from the terminal: 
+    - py test.py Test.<function name goes here>
+
+    For example: py .\test.py Test.test_patient_retrieval_in_age_range
+    """
 
     def test_patient_retrieval_in_age_range(self):
         """Test to ensure patients retrieved are within the age range specified
@@ -12,7 +28,7 @@ class Test(unittest.TestCase):
         
         """
 
-        num_of_patients = 4
+        num_of_patients = 10
         lower_bound = 10
         upper_bound = 20
         peter_pan = True
@@ -20,23 +36,14 @@ class Test(unittest.TestCase):
         patients: list[PatientInfo] = get_firestore_age_range(db=firestore, num_of_patients=num_of_patients, \
                                                               lower=lower_bound, upper=upper_bound, peter_pan=peter_pan)
 
-        # If request is granted...
-        if patients:
-            for patient in patients: 
-                with self.subTest(patient = patient):
-                    self.assertTrue(lower_bound <= patient.age <= upper_bound, "Should be within given range")
-                
-                if peter_pan and patient.creation_date:
-                    dob = patient.birth_date
-                else: 
-                    dob = datetime.datetime.strptime(patient.birth_date, "%Y-%m-%d").date()
+        for patient in patients: 
+            with self.subTest(patient = patient):
+                self.assertTrue(lower_bound <= patient.age <= upper_bound, "Should be within given range")
 
-                with self.subTest(patient = patient):
-                    self.assertEqual(calculate_age(dob), patient.age, "Should be equal")
-                with self.subTest(patient=patient):
-                    self.assertTrue(lower_bound <= calculate_age(dob) <= upper_bound, "Should be within given range")
-        else:
-            print("Not enough patients fit the criteria given...")
+            with self.subTest(patient = patient):
+                self.assertEqual(calculate_age(patient.birth_date), patient.age, "Should be equal")
+            with self.subTest(patient=patient):
+                self.assertTrue(lower_bound <= calculate_age(patient.birth_date) <= upper_bound, "Should be within given range")
 
 
     def test_assign_patient_age(self):
@@ -47,19 +54,18 @@ class Test(unittest.TestCase):
         """
 
         num_of_patients = 5
-        new_age = 20
-        peter_pan = True
+        new_age = 99
+        peter_pan = False
 
         patients: list[PatientInfo] = get_firestore_age_range(db=firestore, num_of_patients=num_of_patients, \
                                                               lower=10, upper=100, peter_pan=peter_pan)
 
-        if patients:
-            for patient in patients: 
-                updated_patient = assign_age_to_patient(patient_info=patient, desired_age=new_age)
-                with self.subTest(patient = patient):
-                    self.assertEqual(calculate_age(updated_patient.birth_date), new_age, "Should be equal")
-                with self.subTest(patient = patient):
-                    self.assertEqual(patient.age, new_age, "Should be equal")
+        for i, patient in enumerate(patients): 
+            updated_patient = assign_age_to_patient(patient_info=patient, desired_age=new_age, index=i)
+            with self.subTest(patient = patient):
+                self.assertEqual(calculate_age(updated_patient.birth_date), new_age, "Should be equal")
+            with self.subTest(patient = patient):
+                self.assertEqual(patient.age, new_age, "Should be equal")
 
 
     def test_count_docs_in_firestore(self):
@@ -86,10 +92,10 @@ class Test(unittest.TestCase):
         
         """
 
-        num_of_patients = 5
+        num_of_patients = 10
         lower = 10
         upper = 100
-        peter_pan = True
+        peter_pan = False
 
         num_files_before = len([name for name in os.listdir(hl7_folder_path)])
 
@@ -108,7 +114,7 @@ class Test(unittest.TestCase):
 
 
     def test_production_of_OML_021(self):
-        
+
         hl7_messages = produce_OML_O21_from_firestore(db=firestore, num_of_patients=1, age=30, assign_age=True)
 
         for hl7_message in hl7_messages:
@@ -123,10 +129,10 @@ class Test(unittest.TestCase):
 
 
     def test_generation_of_patients_following_low_count(self):
-        num_of_patients = 30
-        lower = 23
-        upper = 24
-        peter_pan = False
+        num_of_patients = 35
+        lower = 56
+        upper = 57
+        peter_pan = True
         patients = None 
 
         patients = get_firestore_age_range(firestore, num_of_patients, lower, upper, peter_pan)
@@ -136,6 +142,33 @@ class Test(unittest.TestCase):
 
         self.assertEqual(len(patients), num_of_patients)
 
+
+    # def test_reception_of_ORU_R01_message(self):
+    #     """
+    #     Testing reception of ORU_R01 messages - utilises much of the same code from the project 
+    #     <http_to_flatfile_to_http_hl7>. Ensure tcp_HL7 folder is empty before running. 
+
+    #     Note: attempting to kill the client and server running as subprocesses will result in a warning message, 
+    #     which states that the subprocess is still running, and provides the subprocess PID. 
+
+    #     On Windows: 
+    #     - You can check for the existence of this subprocess from the terminal using: ps -id <PID> 
+    #     - You can kill this subprocess if it exists from the terminal using: taskkill /PID <PID> /F
+    #     """
+    #     server = subprocess.Popen(["py", "tcp_server.py"], shell=False)
+    #     client = subprocess.Popen(["py", "tcp_client.py"], shell=False)
+
+    #     time.sleep(2)
+        
+    #     ORU_R01_file = Path(HL7_FILE_PATH)
+    #     self.assertTrue(ORU_R01_file.is_file())
+
+    #     # Tidying up
+    #     server = psutil.Process(server.pid)
+    #     for child in server.children(recursive=True): 
+    #         child.kill()
+    #     server.kill()
+        
 
 if __name__ == '__main__':
     firestore = initialize_firestore()

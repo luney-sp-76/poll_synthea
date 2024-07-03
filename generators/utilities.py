@@ -66,7 +66,7 @@ def create_control_id():
     return control_id
 
 
-# Creates a random patient ID for the patient 
+# Creates a random patient ID for the patient - need more clarity before changing 
 def create_patient_id():
     alphanumeric = "".join(
         ["{}".format(random.choice(string.ascii_uppercase + string.digits)) for _ in range(0, 8)]
@@ -226,16 +226,16 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
 
                 # Handle creation date - if patient doesn't have one, then assign today's date
                 if ("creation_date" in doc._data): 
-                    creation_date = doc._data["creation_date"]
+                    creation_date = datetime.datetime.strptime(doc._data["creation_date"], "%Y-%m-%d").date()
                 else: 
-                    creation_date = date.today().isoformat()
+                    creation_date = date.today()
 
                 # Create patient_info object for further use 
                 patient_info = PatientInfo(
                     id=doc._data["id"],
 
                     # Consider simply converting birth date at this point instead of throughout
-                    birth_date=doc._data["birth_date"],
+                    birth_date=datetime.datetime.strptime(doc._data["birth_date"], "%Y-%m-%d").date(),
                     gender=doc._data["gender"],
                     ssn=doc._data["ssn"],
                     first_name=doc._data["first_name"],
@@ -284,6 +284,7 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                             patient_info = parse_fhir_message(fhir_message)
                             save_to_firestore(db=db, patient_info=patient_info)
                             uploaded_patients.append(file.name)
+                            
                     except UnicodeDecodeError as e:
                         print("Problem reading file...")
                         print(e)
@@ -300,17 +301,27 @@ def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
     """
 
     current_date = date.today()
-    creation_date = datetime.datetime.strptime(patient_info.creation_date, "%Y-%m-%d").date()
-    birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
+    creation_date = patient_info.creation_date
+    birth_date = patient_info.birth_date
 
     # Find days passed since creation date 
-    days_passed = (current_date - creation_date).days
+    years_passed = (current_date.year - creation_date.year)
 
-    # Add the number of days passed to the original birth date, arriving at updated birth date 
-    new_birth_date = birth_date + datetime.timedelta(days=days_passed)
+    # We only change their birth year, as most patients' DOB will be 01/01/...
+    if (years_passed > 0): 
 
-    patient_info.birth_date = new_birth_date
-    patient_info.age = calculate_age(new_birth_date)
+        # Add the number of years passed
+        new_birth_date = birth_date.replace(year=(birth_date.year + years_passed))
+
+        patient_info.birth_date = new_birth_date
+
+    # Only becomes relevant for tricky DOB close to current date, i.e., patient has just turned 18 yesterday
+    elif (patient_info.age != calculate_age(patient_info.birth_date)):
+
+        # Add a single year as patient must have recent birthday
+        new_birth_date = birth_date.replace(year=(birth_date.year + 1))
+
+        patient_info.birth_date = new_birth_date
 
     return patient_info
 
@@ -322,18 +333,23 @@ def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
     set to false. 
     """
 
-    birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
-    patient_info.age = calculate_age(birth_date=birth_date)
+    patient_info.age = calculate_age(birth_date=patient_info.birth_date)
 
     return patient_info
 
 
-def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> PatientInfo:
-    """Changes the patient's date of birth and age to the desired age"""
+def assign_age_to_patient(patient_info: PatientInfo, desired_age: int, index: int | None) -> PatientInfo:
+    """Changes the patient's date of birth and age to the desired age
+    
+    Optional arg - index: int, which indicates the position of the patient in the array looped through
+    """
 
     # Sets year of birth to appropriate year; day and month are both '01' to simplify references
 
     new_birth_date = date.today().replace(year=(date.today().year - desired_age), month=1, day=1)
+
+    # Increment the new_birth_date for each patient iteration in the list  
+    if index: new_birth_date = new_birth_date + datetime.timedelta(days=index)
 
     patient_info.birth_date = new_birth_date
     patient_info.age = desired_age
