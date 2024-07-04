@@ -1,6 +1,6 @@
 import psutil
 from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore, produce_OML_O21_from_firestore
-from generators.utilities import PatientInfo, assign_age_to_patient, calculate_age, count_patient_records
+from generators.utilities import PatientInfo, assign_age_to_patient, calculate_age, count_patient_records, parse_HL7_message
 import unittest, datetime, numbers, os, os.path
 # from dummy_client import send_ORU_R01
 # from tcp_server import run_tcp_server, HL7_FILE_PATH
@@ -141,6 +141,15 @@ class Test(unittest.TestCase):
             print (patient.first_name)
 
         self.assertEqual(len(patients), num_of_patients)
+
+
+#     def test_parsing_hl7_message(self):
+#         hl7_message = """MSH|^~\&|HIS|RIH|ADT|RIH|20230523102000||ADT^A31|123456|P|2.4
+# EVN|A31|20230523102000
+# PID|1||12345678^^^RIH^MR||Doe^John^A||19800101|M|||456 Elm St^^Newtown^CA^90211^USA||555-5678||||M|N|123-45-6789
+# PV1|1|O|^^^RIH||||1234^Smith^John^A|||||||||||||||12345678"""
+    
+#         parse_HL7_message(hl7_message)
 
 
     # def test_reception_of_ORU_R01_message(self):
