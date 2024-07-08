@@ -3,7 +3,7 @@
 # This file contains the code to create the PV1 segment of the HL7 message
 import logging
 import traceback
-from generators.utilities import create_visit_instiution
+from ..generators.utilities import create_visit_instiution
 
 
 

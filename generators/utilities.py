@@ -11,7 +11,7 @@ from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1 import aggregation
 import hl7apy.core
-from poll_synthea import call_for_patients
+from ..poll_synthea import call_for_patients
 from hl7apy.parser import parse_message
 from hl7apy.core import Group, Segment
 
@@ -221,13 +221,18 @@ def parse_HL7_message(msg):
     if (hl7.pid):
         try: 
             patient_id = hl7.pid.pid_3.to_er7()
+            # print("Got patient id")
 
             birth_date = hl7.pid.pid_7.to_er7()
             # Turn into date object
             birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date()
 
+            # print("Got patient DOB")
+
             gender = hl7.pid.pid_8.to_er7()
             ssn = hl7.pid.pid_19.to_er7()
+
+            # print("Got patient gender & ssn")
 
             names = (hl7.pid.pid_5.to_er7()).split("^")
             print(names)
@@ -238,20 +243,27 @@ def parse_HL7_message(msg):
             else: 
                 middle_name = None 
 
+            # print("Got patient names")
+
             location = str(hl7.pid.pid_11.to_er7()).split("^")
             city = location[2]
             state = location[3]
             postal_code = location[4]
             country = location[5]
-            age = calculate_age(birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date())
+
+            # print("Got patient locations")
+
+            age = calculate_age(birth_date=birth_date)
             creation_date = date.today()
+
+            # print("Got patient age & creation date")
 
             patient_info = PatientInfo(id=patient_id, birth_date=birth_date, gender=gender, ssn=ssn, first_name=first_name, 
                                     middle_name=middle_name, last_name=last_name, city=city, state=state, country=country, 
                                     postal_code=postal_code, age=age, creation_date=creation_date)
         except Exception as e: 
-            print("Error encountered while attempting to retrieve patient info from PID - field likely missing.")
-            print(e.with_traceback)
+            print("Error encountered while attempting to retrieve patient info from PID - field likely missing or misplaced.")
+            print(str(e))
 
     return hl7, patient_info
 
