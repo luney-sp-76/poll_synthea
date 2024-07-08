@@ -1,4 +1,0 @@
-[submodule "http_to_flatfile_to_http_hl7"]
-	path = http_to_flatfile_to_http_hl7
-	url = https://github.com/luney-sp-76/http_to_flatfile_to_http_hl7
-	branch = production
