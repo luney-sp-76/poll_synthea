@@ -10,10 +10,8 @@ from fhir.resources.R4B.patient import Patient
 from firebase_admin import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1 import aggregation
-import hl7apy.core
 from ..poll_synthea import call_for_patients
 from hl7apy.parser import parse_message
-from hl7apy.core import Group, Segment
 
 
 BASE_DIR = Path.cwd()
@@ -214,55 +212,54 @@ def parse_HL7_message(msg):
     - patient_info: PatientInfo, an object containing patient information retrieved from an HL7 message. 
     """
     
-    hl7 = parse_message(msg.replace('\n', '\r'), find_groups=True, validation_level=2)
+    hl7 = parse_message(msg.replace('\n', '\r'), find_groups=True)
     patient_info = None
+
+    if (hl7.msh.msh_9.to_er7() == "ORU^R01"):
+        hl7 = hl7.oru_r01_patient_result.oru_r01_patient
 
     # Empty list if no PID
     if (hl7.pid):
         try: 
             patient_id = hl7.pid.pid_3.to_er7()
-            # print("Got patient id")
+            print("Got patient id")
 
             birth_date = hl7.pid.pid_7.to_er7()
             # Turn into date object
             birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date()
 
-            # print("Got patient DOB")
+            print("Got patient DOB")
 
             gender = hl7.pid.pid_8.to_er7()
             ssn = hl7.pid.pid_19.to_er7()
 
-            # print("Got patient gender & ssn")
+            print("Got patient gender & ssn")
 
-            names = (hl7.pid.pid_5.to_er7()).split("^")
-            print(names)
-            first_name = names[1]
-            last_name = names[0]
-            if len(names) > 2:
-                middle_name = names[2]
-            else: 
-                middle_name = None 
+            # Need better handling of possible empty fields vvvvv
+            first_name = hl7.pid.pid_5.pid_5_2.to_er7()
+            last_name = hl7.pid.pid_5.pid_5_1.to_er7()
+            middle_name = hl7.pid.pid_5.pid_5_3.to_er7()
 
-            # print("Got patient names")
+            print("Got patient names")
+            
+            city = hl7.pid.pid_11.pid_11_3.to_er7()
+            state = hl7.pid.pid_11.pid_11_4.to_er7()
+            postal_code = hl7.pid.pid_11.pid_11_5.to_er7()
+            country = hl7.pid.pid_11.pid_11_6.to_er7()
 
-            location = str(hl7.pid.pid_11.to_er7()).split("^")
-            city = location[2]
-            state = location[3]
-            postal_code = location[4]
-            country = location[5]
-
-            # print("Got patient locations")
+            print("Got patient locations")
 
             age = calculate_age(birth_date=birth_date)
             creation_date = date.today()
 
-            # print("Got patient age & creation date")
+            print("Got patient age & creation date")
 
             patient_info = PatientInfo(id=patient_id, birth_date=birth_date, gender=gender, ssn=ssn, first_name=first_name, 
                                     middle_name=middle_name, last_name=last_name, city=city, state=state, country=country, 
                                     postal_code=postal_code, age=age, creation_date=creation_date)
+
         except Exception as e: 
-            print("Error encountered while attempting to retrieve patient info from PID - field likely missing or misplaced.")
+            print("Error encountered while attempting to retrieve patient info from PID.")
             print(str(e))
 
     return hl7, patient_info
