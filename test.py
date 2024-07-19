@@ -1,7 +1,15 @@
-from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore, produce_OML_O21_from_firestore
-from generators.utilities import PatientInfo, assign_age_to_patient, calculate_age, count_patient_records
+from pathlib import Path
+from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore, \
+    produce_OML_O21_from_firestore
+from generators.utilities import PatientCondition, PatientInfo, PatientObservation, \
+    assign_age_to_patient, calculate_age, count_patient_records, parse_fhir_message, save_to_firestore, \
+        firestore_doc_to_patient_info
 import unittest, datetime, numbers, os, os.path
+from poll_synthea import call_for_patients
+from google.cloud.firestore_v1.base_query import FieldFilter
 
+BASE_DIR = Path.cwd()
+work_folder_path = BASE_DIR / "Work"
 
 class Test(unittest.TestCase):
 
@@ -135,6 +143,147 @@ class Test(unittest.TestCase):
             print (patient.first_name)
 
         self.assertEqual(len(patients), num_of_patients)
+
+
+    def test_condition_parsing(self):
+        """ Tests the creation of the condition attribute within a ``PatientInfo`` object 
+        using the ``PatientCondition`` class. 
+
+        Requires at least one fhir doc in the ``Work`` folder. 
+        """
+        for file in work_folder_path.glob("*.json"):
+            with open(file, "r") as f:
+                fhir_message = f.read()
+
+                # Parse patient information from file 
+                patient_info = parse_fhir_message(fhir_message)
+
+                if patient_info.conditions:
+                    for condition in patient_info.conditions:
+                        self.assertTrue(hasattr(condition, "condition"))
+                        self.assertTrue(hasattr(condition, "clinical_status"))
+                        self.assertTrue(hasattr(condition, "verification_status"))
+                        self.assertTrue(hasattr(condition, "onset_date_time"))
+                        self.assertTrue(hasattr(condition, "recorded_date"))
+                        self.assertTrue(hasattr(condition, "encounter_reference"))
+                        self.assertTrue(hasattr(condition, "subject_reference"))
+
+
+    def test_observation_parsing(self): 
+        """ Tests the creation of the observation attribute within a ``PatientInfo`` object 
+        using the ``PatientObservation`` class. 
+
+        Requires at least one fhir doc in the ``Work`` folder. 
+        """
+        for file in work_folder_path.glob("*.json"):
+            with open(file, "r") as f:
+                fhir_message = f.read()
+
+                # Parse patient information from file 
+                patient_info = parse_fhir_message(fhir_message)
+
+                if patient_info.observations:
+                    for observation in patient_info.observations:
+                        self.assertTrue(hasattr(observation, "category"))
+                        self.assertTrue(hasattr(observation, "observation"))
+                        self.assertTrue(hasattr(observation, "status"))
+                        self.assertTrue(hasattr(observation, "effective_date_time"))
+                        self.assertTrue(hasattr(observation, "issued"))
+                        self.assertTrue(hasattr(observation, "encounter_reference"))
+                        self.assertTrue(hasattr(observation, "subject_reference"))
+                        if observation.component:
+                            for component in observation.component:
+                                self.assertTrue(component["code_text"])
+                                self.assertTrue(component["result"])
+
+
+    def test_fhir_conditions_observations_upload(self):
+        """Testing the upload of patient conditions and observations to Firestore. 
+        """
+        print(f"Generating new patients...")
+
+        info = {
+            "number_of_patients": 1,
+            "age_from": 10, 
+            "age_to": 80, 
+            "sex": "M"
+        }
+
+        # Generate patients using poll_synthea
+        call_for_patients(info=info)
+
+        for file in work_folder_path.glob("*.json"):
+            with open(file, "r") as f:
+                fhir_message = f.read()
+
+                # Parse patient information from file 
+                patient_info = parse_fhir_message(fhir_message)
+
+                save_to_firestore(db=firestore, patient_info=patient_info)
+
+
+    def test_retrieval_of_conditions_observations(self):
+        """Testing the retrieval and parsing of patient information from Firestore 
+        docs, including patient conditions and observations. 
+
+        To retrieve only docs with both conditions and observations fields, use the retrieval 
+        with creation date 2024-07-17.
+
+        To instead retrieve a number of docs which may or may not contain conditions and/or observations, 
+        use the retrieval with a limit, and set the limit to the desired number of docs to test. 
+        """
+        # Retrieve docs from Firestore
+        
+        docs = firestore.collection("full_fhir").where(filter=FieldFilter("creation_date", "==", "2024-07-17")).stream()
+        # docs = firestore.collection("full_fhir").limit(10).stream()
+
+        for doc in docs: 
+
+            # Transform into a PatientInfo object
+            patient_info = firestore_doc_to_patient_info(doc=doc)
+
+            # Test basic patient information retrieval and parsing from Firestore doc 
+            self.assertTrue(hasattr(patient_info, "id"))
+            self.assertTrue(hasattr(patient_info, "birth_date"))
+            self.assertTrue(hasattr(patient_info, "gender"))
+            self.assertTrue(hasattr(patient_info, "ssn"))
+            self.assertTrue(hasattr(patient_info, "first_name"))
+            self.assertTrue(hasattr(patient_info, "middle_name"))
+            self.assertTrue(hasattr(patient_info, "last_name"))
+            self.assertTrue(hasattr(patient_info, "city"))
+            self.assertTrue(hasattr(patient_info, "state"))
+            self.assertTrue(hasattr(patient_info, "country"))
+            self.assertTrue(hasattr(patient_info, "postal_code"))
+            self.assertTrue(hasattr(patient_info, "age"))
+            self.assertTrue(hasattr(patient_info, "creation_date"))
+            self.assertTrue(hasattr(patient_info, "conditions"))
+            self.assertTrue(hasattr(patient_info, "observations"))
+            
+            # Test conditions retrieval and parsing from Firestore doc
+            if patient_info.conditions:
+                for condition in patient_info.conditions:
+                    self.assertTrue(hasattr(condition, "condition"))
+                    self.assertTrue(hasattr(condition, "clinical_status"))
+                    self.assertTrue(hasattr(condition, "verification_status"))
+                    self.assertTrue(hasattr(condition, "onset_date_time"))
+                    self.assertTrue(hasattr(condition, "recorded_date"))
+                    self.assertTrue(hasattr(condition, "encounter_reference"))
+                    self.assertTrue(hasattr(condition, "subject_reference"))
+
+            # Test observations retrieval and parsing from Firestore doc
+            if patient_info.observations:
+                for observation in patient_info.observations:
+                    self.assertTrue(hasattr(observation, "category"))
+                    self.assertTrue(hasattr(observation, "observation"))
+                    self.assertTrue(hasattr(observation, "status"))
+                    self.assertTrue(hasattr(observation, "effective_date_time"))
+                    self.assertTrue(hasattr(observation, "issued"))
+                    self.assertTrue(hasattr(observation, "encounter_reference"))
+                    self.assertTrue(hasattr(observation, "subject_reference"))
+                    if observation.component:
+                        for component in observation.component:
+                            self.assertTrue(component["code_text"])
+                            self.assertTrue(component["result"])
 
 
 if __name__ == '__main__':
