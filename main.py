@@ -7,15 +7,10 @@ import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pathlib import Path
-from generators.utilities import create_control_id, create_filler_order_num, create_placer_order_num, \
+from .generators.utilities import create_control_id, create_filler_order_num, create_placer_order_num, \
     get_firestore_age_range, parse_fhir_message, PatientInfo, assign_age_to_patient
 from hl7apy import core
-import segments.create_pid as create_pid
-import segments.create_obr as create_obr
-import segments.create_orc as create_orc
-import segments.create_msh as create_msh
-import segments.create_evn as create_evn
-import segments.create_pv1 as create_pv1
+from .segments import create_pid, create_obr, create_orc, create_msh, create_evn, create_pv1
 from pathlib import Path
 
 BASE_DIR = Path.cwd()
@@ -206,7 +201,7 @@ class HL7MessageProcessor:
 def initialize_firestore() -> firestore.client:
         global BASE_DIR
         """Initialize Firestore client and return it."""
-        json_file = Path("firebase/pollsynthea-firebase-adminsdk-j01m1-f9a1592562.json")
+        json_file = Path("poll_synthea", "firebase", "pollsynthea-firebase-adminsdk-j01m1-f9a1592562.json")
         if json_file:
             cred = credentials.Certificate(json_file)
             firebase_admin.initialize_app(cred)
@@ -226,9 +221,6 @@ def produce_ADT_A01_from_firestore(db: firestore.client, num_of_patients: int, l
 
     if patients:
         for patient in patients: 
-
-            if (not peter_pan):
-                patient.birth_date = datetime.strptime(patient.birth_date, "%Y-%m-%d").date()
 
             hl7_message = create_adt_message(patient, "ADT_A01")
 
@@ -256,8 +248,8 @@ def produce_OML_O21_from_firestore(db: firestore.client, num_of_patients: int, a
 
     if assign_age:
         patients: list[PatientInfo] = get_firestore_age_range(db=db, num_of_patients=num_of_patients, lower=1, upper=100, peter_pan=True)
-        for patient in patients: 
-            patient = assign_age_to_patient(patient_info=patient, desired_age=age)
+        for i, patient in enumerate(patients): 
+            patient = assign_age_to_patient(patient_info=patient, desired_age=age, index=i)
     else:
         patients: list[PatientInfo] = get_firestore_age_range(db=db, num_of_patients=num_of_patients, lower=age, upper=age, peter_pan=True)
 

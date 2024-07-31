@@ -4,7 +4,7 @@
 
 import logging
 import traceback
-from generators.utilities import create_obr_time
+from ..generators.utilities import create_obr_time
 
 
 # Creates a OBR segment for the HL7 message requires a patient_info object and the hl7 message

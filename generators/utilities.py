@@ -13,11 +13,15 @@ from firebase_admin import firestore
 from google.cloud.firestore_v1 import document
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1 import aggregation
+from ..poll_synthea import call_for_patients
+from hl7apy.parser import parse_message
 import requests
-from poll_synthea import call_for_patients
+
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
+
+
 
 # generate a random time for the OBR segment
 def create_obr_time():
@@ -69,7 +73,7 @@ def create_control_id():
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
     return control_id
 
-
+  
 # Increments patient hl7v2_id by one  
 def increment_patient_id(s):
     def increment_char(c):
@@ -641,6 +645,72 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
     return patient_info
 
 
+def parse_HL7_message(msg):
+    """
+    A rudimentary function, still under development, which looks to return a parsed hl7 object, as well as 
+    to retrieve patient info from a HL7 message if a PID field is present. 
+    
+    Arguments: 
+    - msg: str, the HL7 message from which patient information should be taken. 
+
+    Returns: 
+    - hl7: a parsed hl7 object containing the information from msg
+    - patient_info: PatientInfo, an object containing patient information retrieved from an HL7 message. 
+    """
+    
+    hl7 = parse_message(msg.replace('\n', '\r'), find_groups=True)
+    patient_info = None
+
+    if (hl7.msh.msh_9.to_er7() == "ORU^R01"):
+        hl7 = hl7.oru_r01_patient_result.oru_r01_patient
+
+    # Empty list if no PID
+    if (hl7.pid):
+        try: 
+            patient_id = hl7.pid.pid_3.to_er7()
+            print("Got patient id")
+
+            birth_date = hl7.pid.pid_7.to_er7()
+            # Turn into date object
+            birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date()
+
+            print("Got patient DOB")
+
+            gender = hl7.pid.pid_8.to_er7()
+            ssn = hl7.pid.pid_19.to_er7()
+
+            print("Got patient gender & ssn")
+
+            # Need better handling of possible empty fields vvvvv
+            first_name = hl7.pid.pid_5.pid_5_2.to_er7()
+            last_name = hl7.pid.pid_5.pid_5_1.to_er7()
+            middle_name = hl7.pid.pid_5.pid_5_3.to_er7()
+
+            print("Got patient names")
+            
+            city = hl7.pid.pid_11.pid_11_3.to_er7()
+            state = hl7.pid.pid_11.pid_11_4.to_er7()
+            postal_code = hl7.pid.pid_11.pid_11_5.to_er7()
+            country = hl7.pid.pid_11.pid_11_6.to_er7()
+
+            print("Got patient locations")
+
+            age = calculate_age(birth_date=birth_date)
+            creation_date = date.today()
+
+            print("Got patient age & creation date")
+
+            patient_info = PatientInfo(id=patient_id, birth_date=birth_date, gender=gender, ssn=ssn, first_name=first_name, 
+                                    middle_name=middle_name, last_name=last_name, city=city, state=state, country=country, 
+                                    postal_code=postal_code, age=age, creation_date=creation_date)
+
+        except Exception as e: 
+            print("Error encountered while attempting to retrieve patient info from PID.")
+            print(str(e))
+
+    return hl7, patient_info
+
+
 def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
     """
     Pull patient information from Firestorm, given an age range. If not enough patients exist in the firestore, 
@@ -665,7 +735,6 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
 
             # Stream the patient docs 
             for doc in docs:
-
                 patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
 
                 # Matches age with dob - method for doing so depends on the peter_pan bool
@@ -703,6 +772,7 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                             patient_info = parse_fhir_message(fhir_message)
                             save_to_firestore(db=db, patient_info=patient_info)
                             uploaded_patients.append(file.name)
+                            
                     except UnicodeDecodeError as e:
                         print("Problem reading file...")
                         print(e)
@@ -719,17 +789,27 @@ def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
     """
 
     current_date = date.today()
-    creation_date = datetime.datetime.strptime(patient_info.creation_date, "%Y-%m-%d").date()
-    birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
+    creation_date = patient_info.creation_date
+    birth_date = patient_info.birth_date
 
     # Find days passed since creation date 
-    days_passed = (current_date - creation_date).days
+    years_passed = (current_date.year - creation_date.year)
 
-    # Add the number of days passed to the original birth date, arriving at updated birth date 
-    new_birth_date = birth_date + datetime.timedelta(days=days_passed)
+    # We only change their birth year, as most patients' DOB will be 01/01/...
+    if (years_passed > 0): 
 
-    patient_info.birth_date = new_birth_date
-    patient_info.age = calculate_age(new_birth_date)
+        # Add the number of years passed
+        new_birth_date = birth_date.replace(year=(birth_date.year + years_passed))
+
+        patient_info.birth_date = new_birth_date
+
+    # Only becomes relevant for tricky DOB close to current date, i.e., patient has just turned 18 yesterday
+    elif (patient_info.age != calculate_age(patient_info.birth_date)):
+
+        # Add a single year as patient must have recent birthday
+        new_birth_date = birth_date.replace(year=(birth_date.year + 1))
+
+        patient_info.birth_date = new_birth_date
 
     return patient_info
 
@@ -741,18 +821,23 @@ def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
     set to false. 
     """
 
-    birth_date = datetime.datetime.strptime(patient_info.birth_date, "%Y-%m-%d").date()
-    patient_info.age = calculate_age(birth_date=birth_date)
+    patient_info.age = calculate_age(birth_date=patient_info.birth_date)
 
     return patient_info
 
 
-def assign_age_to_patient(patient_info: PatientInfo, desired_age: int) -> PatientInfo:
-    """Changes the patient's date of birth and age to the desired age"""
+def assign_age_to_patient(patient_info: PatientInfo, desired_age: int, index: int | None) -> PatientInfo:
+    """Changes the patient's date of birth and age to the desired age
+    
+    Optional arg - index: int, which indicates the position of the patient in the array looped through
+    """
 
     # Sets year of birth to appropriate year; day and month are both '01' to simplify references
 
     new_birth_date = date.today().replace(year=(date.today().year - desired_age), month=1, day=1)
+
+    # Increment the new_birth_date for each patient iteration in the list  
+    if index: new_birth_date = new_birth_date + datetime.timedelta(days=index)
 
     patient_info.birth_date = new_birth_date
     patient_info.age = desired_age
@@ -857,3 +942,4 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
 
         except Exception as e:
             print('Failed to upload to Firestore: %s', repr(e)) 
+

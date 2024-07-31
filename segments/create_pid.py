@@ -3,9 +3,7 @@
 # This file contains the code to create the PID segment of the HL7 message
 import logging
 import traceback
-from generators.utilities import create_visit_number, create_visit_instiution, PatientInfo
-
-
+from ..generators.utilities import create_visit_number, create_visit_instiution, PatientInfo
 
 # Creates a PID segment for the HL7 message requires a patient_info object and the hl7 message
 def create_pid(patient_info:PatientInfo, hl7):
