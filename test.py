@@ -3,13 +3,35 @@ from main import initialize_firestore, get_firestore_age_range, hl7_folder_path,
     produce_OML_O21_from_firestore
 from generators.utilities import PatientCondition, PatientInfo, PatientObservation, \
     assign_age_to_patient, calculate_age, count_patient_records, parse_fhir_message, save_to_firestore, \
-        firestore_doc_to_patient_info
+        firestore_doc_to_patient_info, create_patient_id
 import unittest, datetime, numbers, os, os.path
 from poll_synthea import call_for_patients
 from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1 import aggregation
+import requests
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
+
+
+def number_to_alphanumeric_upper(n):
+    characters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    base = len(characters)
+    
+    if n == 0:
+        return characters[0] * 5
+    
+    result = []
+    while n > 0:
+        result.append(characters[n % base])
+        n //= base
+    
+    result.reverse()
+    result_str = ''.join(result)
+    
+    # Pad with leading zeros to ensure the result is 5 characters long
+    return result_str.zfill(5)
+
 
 class Test(unittest.TestCase):
 
@@ -156,7 +178,7 @@ class Test(unittest.TestCase):
                 fhir_message = f.read()
 
                 # Parse patient information from file 
-                patient_info = parse_fhir_message(fhir_message)
+                patient_info = parse_fhir_message(db=firestore, fhir_message=fhir_message)
 
                 if patient_info.conditions:
                     for condition in patient_info.conditions:
@@ -180,7 +202,7 @@ class Test(unittest.TestCase):
                 fhir_message = f.read()
 
                 # Parse patient information from file 
-                patient_info = parse_fhir_message(fhir_message)
+                patient_info = parse_fhir_message(db=firestore, fhir_message=fhir_message)
 
                 if patient_info.observations:
                     for observation in patient_info.observations:
@@ -213,13 +235,16 @@ class Test(unittest.TestCase):
         call_for_patients(info=info)
 
         for file in work_folder_path.glob("*.json"):
-            with open(file, "r") as f:
-                fhir_message = f.read()
+            try: 
+                with open(file, "r") as f:
+                    fhir_message = f.read()
 
-                # Parse patient information from file 
-                patient_info = parse_fhir_message(fhir_message)
+                    # Parse patient information from file 
+                    patient_info = parse_fhir_message(db=firestore, fhir_message=fhir_message)
 
-                save_to_firestore(db=firestore, patient_info=patient_info)
+                    save_to_firestore(db=firestore, patient_info=patient_info)
+            except Exception as e: 
+                 print('Failed to parse Fhir & upload to Firestore: %s', repr(e))
 
 
     def test_retrieval_of_conditions_observations(self):
@@ -234,26 +259,29 @@ class Test(unittest.TestCase):
         """
         # Retrieve docs from Firestore
         
-        docs = firestore.collection("full_fhir").where(filter=FieldFilter("creation_date", "==", "2024-07-17")).stream()
+        docs = firestore.collection("full_fhir").where(filter=FieldFilter("creation_date", "==", "2024-07-31")).limit(5).stream()
         # docs = firestore.collection("full_fhir").limit(10).stream()
 
         for doc in docs: 
 
             # Transform into a PatientInfo object
-            patient_info = firestore_doc_to_patient_info(doc=doc)
+            patient_info = firestore_doc_to_patient_info(db=firestore, doc=doc)
 
             # Test basic patient information retrieval and parsing from Firestore doc 
             self.assertTrue(hasattr(patient_info, "id"))
+            self.assertTrue(hasattr(patient_info, "hl7v2_id"))
             self.assertTrue(hasattr(patient_info, "birth_date"))
             self.assertTrue(hasattr(patient_info, "gender"))
             self.assertTrue(hasattr(patient_info, "ssn"))
             self.assertTrue(hasattr(patient_info, "first_name"))
             self.assertTrue(hasattr(patient_info, "middle_name"))
             self.assertTrue(hasattr(patient_info, "last_name"))
+            self.assertTrue(hasattr(patient_info, "address"))
+            self.assertTrue(hasattr(patient_info, "address_2"))
             self.assertTrue(hasattr(patient_info, "city"))
-            self.assertTrue(hasattr(patient_info, "state"))
             self.assertTrue(hasattr(patient_info, "country"))
-            self.assertTrue(hasattr(patient_info, "postal_code"))
+            self.assertTrue(hasattr(patient_info, "post_code"))
+            self.assertTrue(hasattr(patient_info, "country_code"))
             self.assertTrue(hasattr(patient_info, "age"))
             self.assertTrue(hasattr(patient_info, "creation_date"))
             self.assertTrue(hasattr(patient_info, "conditions"))
@@ -284,6 +312,73 @@ class Test(unittest.TestCase):
                         for component in observation.component:
                             self.assertTrue(component["code_text"])
                             self.assertTrue(component["result"])
+
+            # Print random parts of patient info
+
+            print(patient_info)
+
+            if patient_info.conditions:
+                print(patient_info.conditions[0])
+            if patient_info.observations:
+                print(patient_info.observations[0])
+
+
+    def test_hl7v2_id_generation(self):
+        """Testing the generation of a new patient hl7v2 id 
+
+        Will need to manually check against the database that the printed value is 
+        an iteration above the highest stored id in the database. 
+
+        """
+        print(create_patient_id(db=firestore))
+
+
+    def test_check_hl7v2_id_exists(self):
+        """Testing the upload of patient hl7v2 ids to Firestore
+        """
+
+        # Change as necessary vvv
+        id_to_check = "SYN00008^^^PAS^MR"
+
+        query = firestore.collection("full_fhir").where(filter=FieldFilter("hl7v2_id", "==", id_to_check))
+        aggregate_query = aggregation.AggregationQuery(query)
+        aggregate_query.count(alias="all")
+
+        # Get the number of patient records which fit the criteria
+        results = aggregate_query.get()
+        count = results[0][0].value
+        if count > 0:
+            print("ID is in use")
+        else: 
+            print("ID is not in use")
+
+
+    def test_assign_multiple_hl7v2_ids(self):
+        
+        for file in work_folder_path.glob("*.json"):
+            with open(file, "r") as f:
+                fhir_message = f.read()
+
+                # Parse patient information from file 
+                patient_info = parse_fhir_message(db=firestore, fhir_message=fhir_message)
+
+                # Assert that a list has been created 
+                self.assertIsInstance(patient_info.hl7v2_id, list)
+
+                # Add another id 
+                patient_info.hl7v2_id.append(create_patient_id(db=firestore))
+
+                # Print each id 
+                for id in patient_info.hl7v2_id:
+                    print(id)
+
+                # Check that there are two ids 
+                self.assertEqual(2, len(patient_info.hl7v2_id))
+
+
+    def test_get_address_from_api(self):
+        response = requests.get("https://my.api.mockaroo.com/address.json?key=d995a340")
+        print(response.json())
 
 
 if __name__ == '__main__':
