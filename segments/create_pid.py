@@ -9,13 +9,13 @@ from ..generators.utilities import create_visit_number, create_visit_instiution,
 def create_pid(patient_info:PatientInfo, hl7):
     try:
        hl7.pid.pid_1 = "1"
-       hl7.pid.pid_3 = patient_info.hl7v2_id
+       hl7.pid.pid_3 = patient_info.hl7v2_id[0]
        # PID 3 defaults to P
        #hl7.pid.pid_3 = patient_info.id
        hl7.pid.pid_5 = f"{patient_info.last_name}^{patient_info.first_name}^{patient_info.middle_name}"
        hl7.pid.pid_7 = patient_info.birth_date.strftime("%Y%m%d")
        hl7.pid.pid_8 = patient_info.gender[0].upper()
-       hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
+       hl7.pid.pid_11 = f"{patient_info.address}^{patient_info.address_2}^{patient_info.city}^^{patient_info.post_code}^{patient_info.country_code}"
        visitNo = create_visit_number()
        visitInstitution = create_visit_instiution()
        #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 

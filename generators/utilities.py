@@ -11,7 +11,7 @@ from fhir.resources.R4B.condition import Condition
 from fhir.resources.R4B.observation import Observation
 from firebase_admin import firestore
 from google.cloud.firestore_v1 import document
-from google.cloud.firestore_v1.base_query import FieldFilter
+from google.cloud.firestore_v1.base_query import FieldFilter, Or
 from google.cloud.firestore_v1 import aggregation
 from ..poll_synthea import call_for_patients
 from hl7apy.parser import parse_message
@@ -73,9 +73,46 @@ def create_control_id():
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
     return control_id
 
-  
+
+def increment_id(id:str) -> str:
+    """Increments a patient id 
+
+    Args: 
+    - id: ``str``, the patient id to increment
+
+    Returns: 
+    - ``str``, the incremented patient id 
+    """
+
+    # Remove dashes from the string
+    cleaned_hex_string = id.replace('-', '')
+
+    # Convert the cleaned hex string to an integer
+    hex_int = int(cleaned_hex_string, 16)
+
+    # Increment the integer by 1
+    incremented_hex_int = hex_int + 1
+
+    # Convert the incremented integer back to a hex string
+    incremented_hex_string = hex(incremented_hex_int)[2:]  # Remove the '0x' prefix
+
+    # Ensure the incremented hex string maintains the original length
+    incremented_hex_string = incremented_hex_string.zfill(len(cleaned_hex_string))
+
+    # Reinsert the dashes to match the original format
+    formatted_incremented_hex_string = '-'.join([
+        incremented_hex_string[:8],
+        incremented_hex_string[8:12],
+        incremented_hex_string[12:16],
+        incremented_hex_string[16:20],
+        incremented_hex_string[20:]
+    ])
+
+    return formatted_incremented_hex_string
+
+
 # Increments patient hl7v2_id by one  
-def increment_patient_id(s):
+def increment_hl7v2_id(s):
     def increment_char(c):
         if 'A' <= c < 'Z':
             return chr(ord(c) + 1)
@@ -101,7 +138,7 @@ def increment_patient_id(s):
 
 
 # Creates a random patient ID for the patient 
-def create_patient_id(db: firestore.client):
+def create_patient_hl7v2_id(db: firestore.client):
     """Generates an hl7v2_id for a new patient, given the highest id currently 
     in the database. 
 
@@ -130,7 +167,7 @@ def create_patient_id(db: firestore.client):
     greatest_id = greatest_id[3 : 9]
 
     # Increment previous patient id to new value
-    new_id = increment_patient_id(greatest_id)
+    new_id = increment_hl7v2_id(greatest_id)
 
     # Generate new hl7v2_id in full
     patient_id = f"{synthea_code + new_id}^^^PAS^MR"
@@ -401,7 +438,7 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
 
             # Create patient id array
             hl7v2_id = []
-            hl7v2_id.append(create_patient_id(db=db))
+            hl7v2_id.append(create_patient_hl7v2_id(db=db))
 
 
             # If true, reading from synthetic Fhir json generated using Synthea
@@ -584,7 +621,7 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
     if ("hl7v2_id" in doc._data):
         hl7v2_id = doc._data["hl7v2_id"]
     else:
-        hl7v2_id = create_patient_id(db=db)
+        hl7v2_id = create_patient_hl7v2_id(db=db)
 
     # Create patient_info object for further use 
     patient_info = PatientInfo(
@@ -645,10 +682,11 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
     return patient_info
 
 
-def parse_HL7_message(msg):
+def parse_HL7_message(msg:str, db:firestore.client):
     """
     A rudimentary function, still under development, which looks to return a parsed hl7 object, as well as 
-    to retrieve patient info from a HL7 message if a PID field is present. 
+    to retrieve patient info from a HL7 message if a PID / ORM field is present. 
+
     
     Arguments: 
     - msg: str, the HL7 message from which patient information should be taken. 
@@ -659,39 +697,77 @@ def parse_HL7_message(msg):
     """
     
     hl7 = parse_message(msg.replace('\n', '\r'), find_groups=True)
+
     patient_info = None
 
     if (hl7.msh.msh_9.to_er7() == "ORU^R01"):
-        hl7 = hl7.oru_r01_patient_result.oru_r01_patient
+        pid = hl7.oru_r01_patient_result.oru_r01_patient.pid
+    elif (hl7.msh.msh_9.to_er7() == "ORM^O01"):
+        pid = hl7.orm_o01_patient.pid
+    else:
+        pid = hl7.pid
 
     # Empty list if no PID
-    if (hl7.pid):
+    if (pid):
         try: 
-            patient_id = hl7.pid.pid_3.to_er7()
-            print("Got patient id")
 
-            birth_date = hl7.pid.pid_7.to_er7()
+            if pid.pid_2:
+                patient_id = pid.pid_2.to_er7()
+            else:
+                # Pull largest id from firebase
+                db_ref = db.collection("full_fhir")
+                query = (
+                    db_ref.order_by("id", direction=firestore.Query.DESCENDING).limit(1)
+                )
+
+                results = query.stream()
+                for result in results:
+                    greatest_id = result._data["id"]
+                    break
+
+                patient_id = increment_id(greatest_id)
+
+            hl7v2_id = []
+            for child in pid.pid_3:
+                hl7v2_id.append(child.to_er7())
+            print("Got patient HL7v2 id")
+            print(hl7v2_id)
+
+            birth_date = pid.pid_7.to_er7()
             # Turn into date object
             birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date()
 
             print("Got patient DOB")
 
-            gender = hl7.pid.pid_8.to_er7()
-            ssn = hl7.pid.pid_19.to_er7()
+            gender = pid.pid_8.to_er7()
+            if pid.pid_19:
+                ssn = pid.pid_19.to_er7()
+            else: 
+                ssn = None
 
             print("Got patient gender & ssn")
 
             # Need better handling of possible empty fields vvvvv
-            first_name = hl7.pid.pid_5.pid_5_2.to_er7()
-            last_name = hl7.pid.pid_5.pid_5_1.to_er7()
-            middle_name = hl7.pid.pid_5.pid_5_3.to_er7()
+            first_name = pid.pid_5.pid_5_2.to_er7()
+            last_name = pid.pid_5.pid_5_1.to_er7()
+            if pid.pid_5.pid_5_3:
+                middle_name = pid.pid_5.pid_5_3.to_er7()
+            else: 
+                middle_name = None
 
             print("Got patient names")
             
-            city = hl7.pid.pid_11.pid_11_3.to_er7()
-            state = hl7.pid.pid_11.pid_11_4.to_er7()
-            postal_code = hl7.pid.pid_11.pid_11_5.to_er7()
-            country = hl7.pid.pid_11.pid_11_6.to_er7()
+            address = pid.pid_11.pid_11_1.to_er7()
+            if pid.pid_11.pid_11_2:
+                address_2 = pid.pid_11.pid_11_2.to_er7()
+            else: 
+                address_2 = None
+            city = pid.pid_11.pid_11_3.to_er7()
+            post_code = pid.pid_11.pid_11_5.to_er7()
+            if pid.pid_11.pid_11_6:
+                country_code = pid.pid_11.pid_11_6.to_er7()
+            else: 
+                country_code = None
 
             print("Got patient locations")
 
@@ -701,12 +777,31 @@ def parse_HL7_message(msg):
             print("Got patient age & creation date")
 
             patient_info = PatientInfo(id=patient_id, birth_date=birth_date, gender=gender, ssn=ssn, first_name=first_name, 
-                                    middle_name=middle_name, last_name=last_name, city=city, state=state, country=country, 
-                                    postal_code=postal_code, age=age, creation_date=creation_date)
+                                    middle_name=middle_name, last_name=last_name, address=address, address_2=address_2, city=city,
+                                    country="United Kingdom", post_code=post_code, country_code=country_code, age=age, 
+                                    creation_date=creation_date, hl7v2_id=hl7v2_id)
 
         except Exception as e: 
-            print("Error encountered while attempting to retrieve patient info from PID.")
-            print(str(e))
+            print(f"Error encountered while attempting to retrieve patient info from PID: {repr(e)}")
+    else: 
+        print("PID not found")
+
+    if (hl7.msh.msh_9.to_er7() == "ORM^O01"):
+        PatientObservation
+        category = "laboratory"
+        observation = hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_4.obr_4_2.to_er7()
+        status = "active"
+        if hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_6:
+            issued = hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_6.to_er7()
+        else:
+            issued = datetime.datetime.now().isoformat(timespec="minutes")
+        subject_reference = patient_info.hl7v2_id
+
+        observation = PatientObservation(category=category, observation=observation, status=status, effective_date_time=None, 
+                                         issued=issued, value_quantity=None, value_codeable_concept=None, encounter_reference=None,
+                                         subject_reference=subject_reference, component=None)
+
+        patient_info.observations.append(observation)
 
     return hl7, patient_info
 
@@ -885,13 +980,20 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     return count, query
 
 
-def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
-        """Save patient info to Firestore if the patient does not already exist 
-        in the database - this is checked using their ID. 
+def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_record:bool=False) -> None:
+        """Saves patient info to Firestore. 
+
+        If no patient exists with the id specified in the ``PatientInfo`` object, then a new 
+        document will be created in Firestore containing their information. 
+
+        If a document containing the patient's information already exists in Firestore, then this
+        document will be overwritten by the new patient information given as an argument, provided 
+        that the ``update_record`` argument is set to ``True``
         
         Args: 
         - db: ``firestore.client``, an initialised firestore client
         - patient_info: ``PatientInfo``, a PatientInfo object
+        - update_record: ``bool`` = False, used to determine whether or not to overwrite existing docs
 
         Returns: 
         - ``None``
@@ -900,16 +1002,27 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
         try: 
             patient_id = patient_info.id
             patient_ref = db.collection("full_fhir").document(patient_id)
-            if patient_ref.get().exists:
+            if ((patient_ref.get().exists) and (not update_record)):
                 print(
                     f"Patient with ID {patient_id} already exists in Firestore. Skipping."
                 )
             else:
 
+                # Preparations before uploading 
+                if patient_info.hl7v2_id:
+                    hl7v2_id = patient_info.hl7v2_id
+                else:
+                    hl7v2_id = [create_patient_hl7v2_id(db=db)]
+
+                if type(patient_info.birth_date) != str:
+                    patient_info.birth_date = patient_info.birth_date.isoformat()
+                if type(patient_info.creation_date) != str:
+                    patient_info.creation_date = patient_info.creation_date.isoformat()
+
                 patient_data = {
                     "id": patient_info.id,
-                    "hl7v2_id": create_patient_id(db=db),
-                    "birth_date": patient_info.birth_date.isoformat(),
+                    "hl7v2_id": hl7v2_id,
+                    "birth_date": patient_info.birth_date,
                     "gender": patient_info.gender,
                     "ssn":patient_info.ssn,
                     "first_name": patient_info.first_name,
@@ -922,7 +1035,7 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
                     "post_code": patient_info.post_code,
                     "country_code": patient_info.country_code,
                     "age":patient_info.age,
-                    "creation_date":patient_info.creation_date.isoformat(),
+                    "creation_date":patient_info.creation_date
                 }
 
                 if hasattr(patient_info, 'conditions'):
@@ -938,8 +1051,56 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
                     patient_data["observations"] = observations
 
                 patient_ref.set(patient_data)
-                print(f"Added patient with ID {patient_id} to Firestore.")
+                if update_record:
+                    print(f"Patient with ID {patient_id} has been updated.")
+                else:
+                    print(f"Added patient with ID {patient_id} to Firestore.")
 
         except Exception as e:
             print('Failed to upload to Firestore: %s', repr(e)) 
 
+
+def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) -> None: 
+    """Looks to update a patient record in Firestore following the reception of an ORM_O01 message. 
+
+    If a patient with a matching HL7v2 id can be found in the database, the new observation request 
+    will be added to their record. 
+
+    If no patient can be found with a matching HL7v2 id, then a new document will be created in Firestore 
+    containing the patient information, along with the observation request. 
+
+    Args: 
+    - db: ``firestore.client``, the client used to connect to Firestore 
+    - patient_info: ``PatientInfo``, the patient information parsed from the HL7v2 ORM_O01 message
+
+    Returns: 
+    - ``None``
+    """
+    retrieved_patient_info = None
+    db_ref = db.collection("full_fhir")
+
+    for hl7v2_id in patient_info.hl7v2_id:
+        if not retrieved_patient_info:
+            filter1 = FieldFilter("hl7v2_id", "==", hl7v2_id)
+            filter2 = FieldFilter("hl7v2_id", "array_contains", hl7v2_id)
+            or_filter = Or(filters=[filter1, filter2])
+
+            query = (
+                db_ref.where(filter=or_filter).limit(1)
+            )
+
+            print(f"Looking for patient with hl7_v2 id {hl7v2_id}...")
+            results = query.stream()
+
+            for doc in results:
+                retrieved_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+                print("Found patient record.")
+
+    if retrieved_patient_info: 
+
+        # TO DO: change subject reference to firestore id instead of HL7v2 id??
+        retrieved_patient_info.observations.extend(patient_info.observations)
+        save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
+    else: 
+        print("No matching patient found - creating new record.")
+        save_to_firestore(db=db, patient_info=patient_info)

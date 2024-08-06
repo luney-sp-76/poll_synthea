@@ -2,8 +2,8 @@ from pathlib import Path
 from main import initialize_firestore, get_firestore_age_range, hl7_folder_path, produce_ADT_A01_from_firestore, \
     produce_OML_O21_from_firestore
 from generators.utilities import PatientCondition, PatientInfo, PatientObservation, \
-    assign_age_to_patient, calculate_age, count_patient_records, parse_fhir_message, save_to_firestore, \
-        firestore_doc_to_patient_info, create_patient_id
+    assign_age_to_patient, calculate_age, count_patient_records, increment_id, parse_fhir_message, save_to_firestore, \
+        firestore_doc_to_patient_info, create_patient_hl7v2_id
 import unittest, datetime, numbers, os, os.path
 from poll_synthea import call_for_patients
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -366,7 +366,7 @@ class Test(unittest.TestCase):
         an iteration above the highest stored id in the database. 
 
         """
-        print(create_patient_id(db=firestore))
+        print(create_patient_hl7v2_id(db=firestore))
 
 
     def test_check_hl7v2_id_exists(self):
@@ -402,7 +402,7 @@ class Test(unittest.TestCase):
                 self.assertIsInstance(patient_info.hl7v2_id, list)
 
                 # Add another id 
-                patient_info.hl7v2_id.append(create_patient_id(db=firestore))
+                patient_info.hl7v2_id.append(create_patient_hl7v2_id(db=firestore))
 
                 # Print each id 
                 for id in patient_info.hl7v2_id:
@@ -415,6 +415,14 @@ class Test(unittest.TestCase):
     def test_get_address_from_api(self):
         response = requests.get("https://my.api.mockaroo.com/address.json?key=d995a340")
         print(response.json())
+
+
+    def test_increment_id(self):
+        
+        previous_id = "f1578ac8-7df3-83f4-8f0d-b2a6936860b0"
+        incremented_id = increment_id(previous_id)
+        print(f"Original id   : {previous_id}")
+        print(f"Incremented id: {incremented_id}")
 
 
 if __name__ == '__main__':

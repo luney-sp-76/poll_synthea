@@ -22,7 +22,7 @@ def run_synthea(x,age, sex):
     command = [
         "java",
         "-jar",
-        "synthea-with-dependencies.jar",  # Assuming the JAR is in the same directory
+        "poll_synthea/synthea-with-dependencies.jar",  # Assuming use of submodules
         "-p",
         str(x),
         "-a",

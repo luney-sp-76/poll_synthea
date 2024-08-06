@@ -8,7 +8,7 @@ from ..generators.utilities import create_obr_time
 
 
 # Creates a OBR segment for the HL7 message requires a patient_info object and the hl7 message
-def create_obr(patient_info, placer_order_num, filler_order_id, hl7):
+def create_obr(patient_info, placer_order_num, filler_order_id, hl7, obr4="R-ANKLE^Ankle X-ray^L"):
     try:
         request_date = create_obr_time()
         observation_date = create_obr_time()
@@ -17,7 +17,7 @@ def create_obr(patient_info, placer_order_num, filler_order_id, hl7):
         hl7.obr.obr_1 = "1"  # Set ID
         hl7.obr.obr_2 = placer_order_num  # Some dummy placer order ID up to 75 characters
         hl7.obr.obr_3 = filler_order_id  # Some dummy filler order ID up to 75 characters
-        hl7.obr.obr_4 = patient_info.id  # some test code hl7.Orders.ext_code 
+        hl7.obr.obr_4 = obr4  # Identifier - text - name of coding system
         #Requested Date/Time lab.Request.date_refer 
         hl7.obr.obr_6 = request_date
         # Observation Date/Time lab.Resultp_extra.doc_date
