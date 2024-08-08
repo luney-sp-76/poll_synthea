@@ -15,6 +15,7 @@ from google.cloud.firestore_v1.base_query import FieldFilter, Or
 from google.cloud.firestore_v1 import aggregation
 from ..poll_synthea import call_for_patients
 from hl7apy.parser import parse_message
+from hl7apy.consts import VALIDATION_LEVEL
 import requests
 
 BASE_DIR = Path.cwd()
@@ -320,6 +321,8 @@ class PatientObservation:
     Attributes: 
     - category: ``String``
     - observation: ``String``
+    - placer_order_number
+    - filler_order_number
     - status: ``String``
     - effective_date_time: ``Date``
     - issued: ``Date``
@@ -327,13 +330,15 @@ class PatientObservation:
     - value_codeable_concept: ``String | None``
     - encounter_reference: ``String``
     - subject_reference: ``String``
-    - component: ``list[dict] | None``
+    - component: ``list[dict] | None`` with two keys: "code_text", and "result"
     
     """
     def __init__(
         self,
         category, 
         observation,
+        placer_order_number,
+        filler_order_number,
         status,  
         effective_date_time, 
         issued,
@@ -345,6 +350,8 @@ class PatientObservation:
     ):
         self.category = category
         self.observation = observation
+        self.placer_order_number = placer_order_number
+        self.filler_order_number = filler_order_number
         self.status = status
         self.effective_date_time = effective_date_time
         self.issued = issued
@@ -355,19 +362,21 @@ class PatientObservation:
         self.component = component
 
     def __repr__(self):  
-        return ("PatientObservation category:% s observation:% s status:% s effective_date_time:% s "
-                "issued:% s value_quantity:% s value_codeable_concept:% s encounter_reference:% s subject_reference:% s "
-                "component:% s") % \
-                (self.category, self.observation, self.status, self.effective_date_time, self.issued,
-                 self.value_quantity, self.value_codeable_concept, self.encounter_reference, self.subject_reference, 
-                 self.component)
+        return ("PatientObservation category:% s observation:% s placer_order_number:% s filler_order_number:% s status:% s "
+                "effective_date_time:% s issued:% s value_quantity:% s value_codeable_concept:% s encounter_reference:% s "
+                "subject_reference:% s component:% s") % \
+                (self.category, self.observation, self.placer_order_number, self.filler_order_number, self.status, 
+                 self.effective_date_time, self.issued, self.value_quantity, self.value_codeable_concept, 
+                 self.encounter_reference, self.subject_reference, self.component)
     
 
     def __str__(self):
-        return ("From str method of PatientObservation: category is % s, observation is % s, status is % s, "
+        return ("From str method of PatientObservation: category is % s, observation is % s, placer_order_number is % s, "
+                "filler_number_order is % s, status is % s, "
                 "effective_date_time is % s, issued is % s, value_quantity is % s, value_codeable_concept is % s, "
                 "encounter_reference is % s, subject_reference is % s, component is % s") % \
-                (self.category, self.observation, self.status, self.effective_date_time, self.issued,
+                (self.category, self.observation, self.placer_order_number, self.filler_order_number, self.status, 
+                 self.effective_date_time, self.issued,
                  self.value_quantity, self.value_codeable_concept, self.encounter_reference, self.subject_reference, 
                  self.component)
 
@@ -584,7 +593,8 @@ def parse_fhir_observations(resource: Observation, patient_info: PatientInfo) ->
             # Add dict to component array
             component_list.append(component_dict)
 
-    patient_observation = PatientObservation(category=category, observation=observation, status=status, 
+    patient_observation = PatientObservation(category=category, observation=observation, placer_order_number=None, 
+                                                filler_order_number=None, status=status, 
                                                 effective_date_time=effective_date_time, issued=issued, 
                                                 value_quantity=value_quantity, 
                                                 value_codeable_concept=value_codeable_concept, 
@@ -668,6 +678,8 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
             new_observation = PatientObservation(
                                     category=observation["category"],
                                     observation=observation["observation"],
+                                    placer_order_number=observation["placer_order_number"],
+                                    filler_order_number=observation["filler_order_number"],
                                     status=observation["status"],
                                     effective_date_time=observation["effective_date_time"],
                                     issued=observation["issued"],
@@ -696,7 +708,7 @@ def parse_HL7_message(msg:str, db:firestore.client):
     - patient_info: PatientInfo, an object containing patient information retrieved from an HL7 message. 
     """
     
-    hl7 = parse_message(msg.replace('\n', '\r'), find_groups=True)
+    hl7 = parse_message(msg.replace('\n', '\r'), validation_level=VALIDATION_LEVEL.QUIET, find_groups=True)
 
     patient_info = None
 
@@ -704,6 +716,8 @@ def parse_HL7_message(msg:str, db:firestore.client):
         pid = hl7.oru_r01_patient_result.oru_r01_patient.pid
     elif (hl7.msh.msh_9.to_er7() == "ORM^O01"):
         pid = hl7.orm_o01_patient.pid
+    elif (hl7.msh.msh_9.to_er7() == "ORU^R01"):
+        pid = hl7.oru_r01_patient_result.oru_r01_patient.pid
     else:
         pid = hl7.pid
 
@@ -790,16 +804,73 @@ def parse_HL7_message(msg:str, db:firestore.client):
         PatientObservation
         category = "laboratory"
         observation = hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_4.obr_4_2.to_er7()
-        status = "active"
+        placer_order_number = hl7.orm_o01_order.orc.orc_2.to_er7()
+        if hl7.orm_o01_order.orc.orc_3:
+            filler_order_number = hl7.orm_o01_order.orc.orc_3.to_er7()
+        else:
+            filler_order_number = None
+        status = hl7.orm_o01_order.orc.orc_5.to_er7()
         if hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_6:
             issued = hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_6.to_er7()
         else:
             issued = datetime.datetime.now().isoformat(timespec="minutes")
         subject_reference = patient_info.hl7v2_id
 
-        observation = PatientObservation(category=category, observation=observation, status=status, effective_date_time=None, 
+        observation = PatientObservation(category=category, observation=observation, placer_order_number=placer_order_number, 
+                                         filler_order_number=filler_order_number, status=status, effective_date_time=None, 
                                          issued=issued, value_quantity=None, value_codeable_concept=None, encounter_reference=None,
                                          subject_reference=subject_reference, component=None)
+
+        patient_info.observations.append(observation)
+
+    if (hl7.msh.msh_9.to_er7() == "ORU^R01"):
+
+        PatientObservation
+        # To determine category correctly, would need to reference common coding systems 
+        category = "laboratory"
+
+        observation = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_4.obr_4_2.to_er7()
+        placer_order_number = hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_2.to_er7()
+        if hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_3:
+            filler_order_number = hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_3.to_er7()
+        else: 
+            filler_order_number = None
+        status = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_25.to_er7()
+        if hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_6:
+            issued = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_6.to_er7()
+        else:
+            issued = None
+        effective_date_time = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_7.to_er7()
+        encounter_reference = None 
+        subject_reference = patient_info.hl7v2_id
+
+        obx_segments = [x.OBX for x in hl7.ORU_R01_PATIENT_RESULT.ORU_R01_ORDER_OBSERVATION.ORU_R01_OBSERVATION]
+
+        if len(obx_segments) > 1:
+            component = []
+            value_quantity = None 
+            value_codeable_concept = None 
+            for obx in obx_segments:
+                component_dict = {}
+                component_dict["code_text"] = obx.obx_3.to_er7() 
+                component_dict["result"] = obx.obx_5.to_er7() + " " + obx.obx_6.to_er7()
+                component.append(component_dict)
+                
+        else:
+            component = None 
+            obx = obx_segments[0]
+            if (obx.obx_2.to_er7() == ("CE" or "CWE")):
+                value_codeable_concept = obx.obx_5.to_er7()
+                value_quantity = None 
+            else:
+                value_quantity = obx.obx_5.to_er7() + " " + obx.obx_6.to_er7()
+                value_codeable_concept = None
+                
+        observation = PatientObservation(category=category, observation=observation, placer_order_number=placer_order_number, 
+                                         filler_order_number=filler_order_number, status=status, 
+                                         effective_date_time=effective_date_time, issued=issued, value_quantity=value_quantity, 
+                                         value_codeable_concept=value_codeable_concept, encounter_reference=encounter_reference,
+                                         subject_reference=subject_reference, component=component)
 
         patient_info.observations.append(observation)
 
@@ -1098,9 +1169,67 @@ def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) ->
 
     if retrieved_patient_info: 
 
-        # TO DO: change subject reference to firestore id instead of HL7v2 id??
         retrieved_patient_info.observations.extend(patient_info.observations)
         save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
+    else: 
+        print("No matching patient found - creating new record.")
+        save_to_firestore(db=db, patient_info=patient_info)
+
+
+def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo) -> None: 
+    """Looks to update a patient record in Firestore following the reception of an ORU_R01 message. 
+
+    If a patient with a matching HL7v2 id can be found in the database, the new observation result 
+    will be added to their record. 
+
+    If no patient can be found with a matching HL7v2 id, then a new document will be created in Firestore 
+    containing the patient information, along with the observation result. 
+
+    Args: 
+    - db: ``firestore.client``, the client used to connect to Firestore 
+    - patient_info: ``PatientInfo``, the patient information parsed from the HL7v2 ORU_R01 message
+
+    Returns: 
+    - ``None``
+    """
+    retrieved_patient_info = None
+    db_ref = db.collection("full_fhir")
+
+    for hl7v2_id in patient_info.hl7v2_id:
+        if not retrieved_patient_info:
+            filter1 = FieldFilter("hl7v2_id", "==", hl7v2_id)
+            filter2 = FieldFilter("hl7v2_id", "array_contains", hl7v2_id)
+            or_filter = Or(filters=[filter1, filter2])
+
+            query = (
+                db_ref.where(filter=or_filter).limit(1)
+            )
+
+            print(f"Looking for patient with hl7_v2 id {hl7v2_id}...")
+            results = query.stream()
+
+            for doc in results:
+                retrieved_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+                print("Found patient record.")
+
+    if retrieved_patient_info: 
+
+        for i, observation in enumerate(retrieved_patient_info.observations):
+
+            # Should use placer and filler order numbers to match in future
+            if observation.observation == patient_info.observations[0].observation \
+                and observation.placer_order_number == patient_info.observations[0].placer_order_number \
+                and observation.filler_order_number == patient_info.observations[0].filler_order_number:
+
+                print("Observation identified.")
+                # Update the retrieved info with the new observation results
+                retrieved_patient_info.observations[i] = patient_info.observations[0]
+
+                print(retrieved_patient_info)
+
+                print("Updating record...")
+                save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
+                break
     else: 
         print("No matching patient found - creating new record.")
         save_to_firestore(db=db, patient_info=patient_info)
