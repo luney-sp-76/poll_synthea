@@ -1,10 +1,12 @@
 # utilities.py
+import json
 import logging
 from pathlib import Path
 import random, string, datetime
 from datetime import date, datetime
 import datetime
 import time
+import uuid
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
 from fhir.resources.R4B.condition import Condition
@@ -21,7 +23,7 @@ import requests
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
-
+DB_COLLECTION = "demo"
 
 
 # generate a random time for the OBR segment
@@ -34,21 +36,24 @@ def create_obr_time():
 
 # generate a random placer order number for the HL7 message
 def create_placer_order_num():
-    order_id = "".join(
-        ["{}".format(random.randint(0, 9)) for _ in range(0, 3)]
-    ) + "".join(
-        ["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)]
-    )
-    return order_id
+    prefix = "PL"
+    
+    placer_order_number = f"{prefix}-{uuid.uuid4()}"
+        
+    return placer_order_number
 
 
 # generate a random filler order number for the HL7 message
 def create_filler_order_num():
-    # allocate a random number between 1 and 999999999
-    random_number = random.randint(1, 999999999)
-    # format the random number as 1^^23^4
-    filler_order_id = f"1^^{random_number // 10000}^{random_number % 10000}"
-    return filler_order_id
+    #  # allocate a random number between 1 and 999999999
+    # random_number = random.randint(1, 999999999)
+    # # format the random number as 1^^23^4
+    # filler_order_id = f"1^^{random_number // 10000}^{random_number % 10000}"
+    prefix = "FL"
+   
+    filler_order_number = f"{prefix}-{uuid.uuid4()}"
+    
+    return filler_order_number
 
 
 # Creates a random visit institution for the HL7 message
@@ -149,29 +154,37 @@ def create_patient_hl7v2_id(db: firestore.client):
     Returns: 
     - patient_id: ``String``, the fully-formed patient hl7v2_id. 
     
-    To do: 
-    - Catch edge cases such as no ID being returned by query
     """
     synthea_code = "SYN"
+    greatest_id = None
 
     # Pull largest id from firebase
-    db_ref = db.collection("full_fhir")
+    db_ref = db.collection(DB_COLLECTION)
     query = (
-        db_ref.order_by("hl7v2_id", direction=firestore.Query.DESCENDING).limit(1)
+        # Don't limit in case of invalid ID creation - need alternatives
+        db_ref.order_by("hl7v2_id", direction=firestore.Query.DESCENDING)
     )
 
     results = query.stream()
     for result in results:
         greatest_id = result._data["hl7v2_id"]
-        break
+        if type(greatest_id) == list:
+            greatest_id = max(greatest_id)
+        
+        # Checking format of hl7v2 ID
+        if ((len(greatest_id) == 17) and (greatest_id[8:] == "^^^PAS^MR")):
+            break
 
-    greatest_id = greatest_id[3 : 9]
+    if greatest_id:
+        greatest_id = greatest_id[3 : 8]
 
-    # Increment previous patient id to new value
-    new_id = increment_hl7v2_id(greatest_id)
+        # Increment previous patient id to new value
+        new_id = increment_hl7v2_id(greatest_id)
 
-    # Generate new hl7v2_id in full
-    patient_id = f"{synthea_code + new_id}^^^PAS^MR"
+        # Generate new hl7v2_id in full
+        patient_id = f"{synthea_code + new_id}^^^PAS^MR"
+    else: 
+        patient_id = f"{synthea_code}00000^^^PAS^MR"
 
     # Return new hl7v2_id 
     return patient_id
@@ -384,6 +397,8 @@ class PatientObservation:
 # Calculate the age of the patient
 def calculate_age(birth_date):
     today = date.today()
+    if type(birth_date) == str:
+        birth_date = datetime.datetime.strptime(birth_date, "%Y-%m-%d")
     age = (
         today.year
         - birth_date.year
@@ -397,6 +412,8 @@ def request_random_address():
     """Requests a random address from a mockeroo API.
 
     Will require error checks to ensure address is reachable and the API responds as expected. 
+    
+    Note: can only generate up to 200 addresses per day 
     """
     response = requests.get("https://my.api.mockaroo.com/address.json?key=d995a340")
 
@@ -551,6 +568,8 @@ def parse_fhir_observations(resource: Observation, patient_info: PatientInfo) ->
 
     category = resource.category[0].coding[0].code
     observation = resource.code.text
+    placer_order_number = create_placer_order_num()
+    filler_order_number = create_filler_order_num()
     status = resource.status
     effective_date_time = resource.effectiveDateTime
     issued = resource.issued
@@ -593,8 +612,8 @@ def parse_fhir_observations(resource: Observation, patient_info: PatientInfo) ->
             # Add dict to component array
             component_list.append(component_dict)
 
-    patient_observation = PatientObservation(category=category, observation=observation, placer_order_number=None, 
-                                                filler_order_number=None, status=status, 
+    patient_observation = PatientObservation(category=category, observation=observation, placer_order_number=placer_order_number, 
+                                                filler_order_number=filler_order_number, status=status, 
                                                 effective_date_time=effective_date_time, issued=issued, 
                                                 value_quantity=value_quantity, 
                                                 value_codeable_concept=value_codeable_concept, 
@@ -617,6 +636,7 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
     within the Firestore document
     
     """
+    
     # Handle middle name 
     middle_name = None
     if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
@@ -729,7 +749,7 @@ def parse_HL7_message(msg:str, db:firestore.client):
                 patient_id = pid.pid_2.to_er7()
             else:
                 # Pull largest id from firebase
-                db_ref = db.collection("full_fhir")
+                db_ref = db.collection(DB_COLLECTION)
                 query = (
                     db_ref.order_by("id", direction=firestore.Query.DESCENDING).limit(1)
                 )
@@ -749,7 +769,7 @@ def parse_HL7_message(msg:str, db:firestore.client):
 
             birth_date = pid.pid_7.to_er7()
             # Turn into date object
-            birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date()
+            birth_date=datetime.datetime.strptime(birth_date, "%Y-%m-%d").date()
 
             print("Got patient DOB")
 
@@ -809,7 +829,10 @@ def parse_HL7_message(msg:str, db:firestore.client):
             filler_order_number = hl7.orm_o01_order.orc.orc_3.to_er7()
         else:
             filler_order_number = None
-        status = hl7.orm_o01_order.orc.orc_5.to_er7()
+        if hl7.orm_o01_order.orc.orc_5:
+            status = hl7.orm_o01_order.orc.orc_5.to_er7()
+        else:
+            status = "SC"
         if hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_6:
             issued = hl7.orm_o01_order.orm_o01_order_detail.orm_o01_choice.obr.obr_6.to_er7()
         else:
@@ -830,16 +853,28 @@ def parse_HL7_message(msg:str, db:firestore.client):
         category = "laboratory"
 
         observation = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_4.obr_4_2.to_er7()
-        placer_order_number = hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_2.to_er7()
+        if hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_2:
+            placer_order_number = hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_2.to_er7()
+        else: 
+            placer_order_number = None 
+            
         if hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_3:
             filler_order_number = hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_3.to_er7()
         else: 
             filler_order_number = None
-        status = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_25.to_er7()
+            
+        if hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_25:
+            status = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_25.to_er7()
+        elif hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_5:
+            status = hl7.oru_r01_patient_result.oru_r01_order_observation.orc.orc_5.to_er7()
+        else: 
+            status = "F"
+            
         if hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_6:
             issued = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_6.to_er7()
         else:
             issued = None
+            
         effective_date_time = hl7.oru_r01_patient_result.oru_r01_order_observation.obr.obr_7.to_er7()
         encounter_reference = None 
         subject_reference = patient_info.hl7v2_id
@@ -859,7 +894,7 @@ def parse_HL7_message(msg:str, db:firestore.client):
         else:
             component = None 
             obx = obx_segments[0]
-            if (obx.obx_2.to_er7() == ("CE" or "CWE")):
+            if obx.obx_2.to_er7() in ("CE", "CWE", "TX"):
                 value_codeable_concept = obx.obx_5.to_er7()
                 value_quantity = None 
             else:
@@ -935,16 +970,18 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                             fhir_message = f.read()
 
                             # Parse patient information from file 
-                            patient_info = parse_fhir_message(fhir_message)
+                            patient_info = parse_fhir_message(db=db, fhir_message=fhir_message)
                             save_to_firestore(db=db, patient_info=patient_info)
                             uploaded_patients.append(file.name)
                             
+                            
+                    # Note: printing name of exception type rather than full exception, as 
+                    # for problems parsing the string it will print the entire string - this can be
+                    # thousands of lines of text, and messes up the terminal.
                     except UnicodeDecodeError as e:
-                        print("Problem reading file...")
-                        print(e)
+                        print(f"Problem reading file...{type(e).__name__}")
                     except Exception as e: 
-                        print("Couldn't parse patient information from fhir message...")
-                        time.sleep(3)
+                        print(f"Couldn't parse patient information from fhir message...{type(e).__name__}")
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
@@ -956,7 +993,11 @@ def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
 
     current_date = date.today()
     creation_date = patient_info.creation_date
+    if type(creation_date) == str:
+        creation_date = datetime.datetime.strptime(creation_date, "%Y-%m-%d")
     birth_date = patient_info.birth_date
+    if type(birth_date) == str:
+        birth_date = datetime.datetime.strptime(birth_date, "%Y-%m-%d")
 
     # Find days passed since creation date 
     years_passed = (current_date.year - creation_date.year)
@@ -1021,7 +1062,7 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     if peter_pan:
 
         # We can simply collect patients using 'age', as will be changing their dob to match
-        query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
+        query = db.collection(DB_COLLECTION).where(filter=FieldFilter("age", "<=", upper))\
                                             .where(filter=FieldFilter("age", ">=", lower))
     else:
 
@@ -1036,7 +1077,7 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
         lower_dob = current_date.replace(year=upper_year)
 
         # Find all records between the two valid DOBs
-        query = db.collection("full_fhir").where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
+        query = db.collection(DB_COLLECTION).where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
                                             .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
     
     aggregate_query = aggregation.AggregationQuery(query)
@@ -1051,7 +1092,7 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     return count, query
 
 
-def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_record:bool=False) -> None:
+def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_record:bool=False) -> int:
         """Saves patient info to Firestore. 
 
         If no patient exists with the id specified in the ``PatientInfo`` object, then a new 
@@ -1067,18 +1108,17 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_re
         - update_record: ``bool`` = False, used to determine whether or not to overwrite existing docs
 
         Returns: 
-        - ``None``
+        - HTTP response code 
         """
 
         try: 
+            under_document_size_limit(db=db, patient_info=patient_info)
             patient_id = patient_info.id
-            patient_ref = db.collection("full_fhir").document(patient_id)
+            patient_ref = db.collection(DB_COLLECTION).document(patient_id)
             if ((patient_ref.get().exists) and (not update_record)):
-                print(
-                    f"Patient with ID {patient_id} already exists in Firestore. Skipping."
-                )
+                raise Exception("Patient record already exists in the database.")
             else:
-
+                
                 # Preparations before uploading 
                 if patient_info.hl7v2_id:
                     hl7v2_id = patient_info.hl7v2_id
@@ -1126,12 +1166,15 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_re
                     print(f"Patient with ID {patient_id} has been updated.")
                 else:
                     print(f"Added patient with ID {patient_id} to Firestore.")
+                    
+                return 200
 
         except Exception as e:
             print('Failed to upload to Firestore: %s', repr(e)) 
+            return 500
 
 
-def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) -> None: 
+def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) -> int: 
     """Looks to update a patient record in Firestore following the reception of an ORM_O01 message. 
 
     If a patient with a matching HL7v2 id can be found in the database, the new observation request 
@@ -1145,10 +1188,10 @@ def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) ->
     - patient_info: ``PatientInfo``, the patient information parsed from the HL7v2 ORM_O01 message
 
     Returns: 
-    - ``None``
+    - HTTP response code 
     """
     retrieved_patient_info = None
-    db_ref = db.collection("full_fhir")
+    db_ref = db.collection(DB_COLLECTION)
 
     for hl7v2_id in patient_info.hl7v2_id:
         if not retrieved_patient_info:
@@ -1168,15 +1211,14 @@ def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) ->
                 print("Found patient record.")
 
     if retrieved_patient_info: 
-
         retrieved_patient_info.observations.extend(patient_info.observations)
-        save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
+        return save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
     else: 
         print("No matching patient found - creating new record.")
-        save_to_firestore(db=db, patient_info=patient_info)
+        return save_to_firestore(db=db, patient_info=patient_info)
 
 
-def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo) -> None: 
+def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo, accept_unmatched:bool=True) -> int: 
     """Looks to update a patient record in Firestore following the reception of an ORU_R01 message. 
 
     If a patient with a matching HL7v2 id can be found in the database, the new observation result 
@@ -1188,12 +1230,13 @@ def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo) ->
     Args: 
     - db: ``firestore.client``, the client used to connect to Firestore 
     - patient_info: ``PatientInfo``, the patient information parsed from the HL7v2 ORU_R01 message
+    - accept_unmatched: ``bool``, determines the action to take if a message is receieved with no matching ORM^O01
 
     Returns: 
-    - ``None``
+    - HTTP response code
     """
     retrieved_patient_info = None
-    db_ref = db.collection("full_fhir")
+    db_ref = db.collection(DB_COLLECTION)
 
     for hl7v2_id in patient_info.hl7v2_id:
         if not retrieved_patient_info:
@@ -1213,23 +1256,89 @@ def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo) ->
                 print("Found patient record.")
 
     if retrieved_patient_info: 
-
+        
         for i, observation in enumerate(retrieved_patient_info.observations):
 
-            # Should use placer and filler order numbers to match in future
             if observation.observation == patient_info.observations[0].observation \
                 and observation.placer_order_number == patient_info.observations[0].placer_order_number \
                 and observation.filler_order_number == patient_info.observations[0].filler_order_number:
 
-                print("Observation identified.")
+                print("Corresponding observation request identified.")
                 # Update the retrieved info with the new observation results
                 retrieved_patient_info.observations[i] = patient_info.observations[0]
 
-                print(retrieved_patient_info)
+                # print(retrieved_patient_info)
 
                 print("Updating record...")
-                save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
-                break
+                return save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
+        
+        # No matching ORM^O01 has been found - following action determined by ``accept_unmatched``
+        if accept_unmatched:
+            print("No corresponding observation request - creating new observation record...")
+            retrieved_patient_info.observations.extend(patient_info.observations)
+            return save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)
+        else: 
+            print("No corresponding observation request - discarding ORU^R01.")
+            
+    # No matching patient found - create new patient record
     else: 
         print("No matching patient found - creating new record.")
-        save_to_firestore(db=db, patient_info=patient_info)
+        return save_to_firestore(db=db, patient_info=patient_info)
+
+
+def under_document_size_limit(db: firestore.client, patient_info: PatientInfo) -> bool:
+    if patient_info.hl7v2_id:
+        hl7v2_id = patient_info.hl7v2_id
+    else:
+        hl7v2_id = [create_patient_hl7v2_id(db=db)]
+
+    if type(patient_info.birth_date) != str:
+        patient_info.birth_date = patient_info.birth_date.isoformat()
+    if type(patient_info.creation_date) != str:
+        patient_info.creation_date = patient_info.creation_date.isoformat()
+
+    patient_data = {
+        "id": patient_info.id,
+        "hl7v2_id": hl7v2_id,
+        "birth_date": patient_info.birth_date,
+        "gender": patient_info.gender,
+        "ssn":patient_info.ssn,
+        "first_name": patient_info.first_name,
+        "middle_name": patient_info.middle_name,
+        "last_name": patient_info.last_name,
+        "address": patient_info.address,
+        "address_2": patient_info.address_2,
+        "city": patient_info.city,
+        "country": patient_info.country,
+        "post_code": patient_info.post_code,
+        "country_code": patient_info.country_code,
+        "age":patient_info.age,
+        "creation_date":patient_info.creation_date
+    }
+    
+    pid_size = len(json.dumps(patient_data).encode("utf-8"))
+    
+    conditions_size = observations_size = 0
+    
+    for condition in patient_info.conditions:
+        if condition.onset_date_time and type(condition.onset_date_time) != str:
+            condition.onset_date_time = condition.onset_date_time.isoformat()
+        if condition.abatement_time and type(condition.abatement_time) != str:
+            condition.abatement_time = condition.abatement_time.isoformat()
+        if condition.recorded_date and type(condition.recorded_date) != str:
+            condition.recorded_date = condition.recorded_date.isoformat()
+            
+        conditions_size = conditions_size + len(json.dumps(condition.__dict__).encode("utf-8"))
+        
+    for observation in patient_info.observations:
+        if observation.effective_date_time and type(observation.effective_date_time) != str:
+            observation.effective_date_time = observation.effective_date_time.isoformat()
+        if observation.issued and type(observation.issued) != str:
+            observation.issued = observation.issued.isoformat()
+            
+        observations_size = observations_size + len(json.dumps(observation.__dict__).encode("utf-8"))
+    
+    if pid_size + conditions_size + observations_size < 1000000:
+        return True
+    else: 
+        return False 

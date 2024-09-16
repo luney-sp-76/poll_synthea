@@ -3,14 +3,15 @@
 # This file contains the code to Build an HL7 message from FHIR data and create a patient in Firestore
 from datetime import date, datetime
 import logging
+import os
 import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pathlib import Path
 from .generators.utilities import create_control_id, create_filler_order_num, create_placer_order_num, \
-    get_firestore_age_range, parse_fhir_message, PatientInfo, assign_age_to_patient
+    get_firestore_age_range, parse_fhir_message, PatientInfo, assign_age_to_patient, save_to_firestore
 from hl7apy import core
-from .segments import create_pid, create_obr, create_orc, create_msh, create_evn, create_pv1
+from poll_synthea.segments import create_pid, create_obr, create_orc, create_msh, create_evn, create_pv1, create_obx
 from pathlib import Path
 
 BASE_DIR = Path.cwd()
@@ -51,7 +52,7 @@ def create_adt_message(patient_info, messageType):
 
 
 # Creates an HL7 ORM message includes the MSH segment then options based on message type then returns an HL7 message
-def create_orm_message(patient_info, messageType):
+def create_orm_message(patient_info:PatientInfo, messageType:str="ORM_O01"):
     hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7)
     hl7 = create_pv1.create_pv1(patient_info, hl7)
@@ -64,7 +65,7 @@ def create_orm_message(patient_info, messageType):
 
 
 # Creates an HL7 ORU message includes the MSH segment then options based on message type then returns an HL7 message
-def create_oru_message(patient_info, messageType):
+def create_oru_message(patient_info:PatientInfo, messageType:str="ORU_R01"):
     hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7)
     hl7 = create_pv1.create_pv1(patient_info, hl7)
@@ -72,6 +73,7 @@ def create_oru_message(patient_info, messageType):
     filler_order_id = create_filler_order_num()
     hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
     hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
+    hl7 = create_obx.create_obx(hl7)
 
     return hl7
 
@@ -80,7 +82,7 @@ def create_oml_message(patient_info, messageType):
     hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7)
     placer_order_num = create_placer_order_num()
-    filler_order_id = "24325-3^Liver^Function^Test"
+    filler_order_id = create_filler_order_num()
     hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
     hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
 
@@ -149,34 +151,7 @@ class HL7MessageProcessor:
                         self.save_hl7_message_to_file(hl7_message, patient_info.id)
 
                         # Saving to firestore 
-                        patient_id = patient_info.id
-                        patient_ref = self.db.collection("full_fhir").document(patient_id)
-                        # Check if patient already exists
-                        if patient_ref.get().exists:
-                            print(
-                                f"Patient with ID {patient_id} already exists in Firestore. Skipping."
-                            )
-                        else:
-                            # Add patient to Firestore
-                            patient_data = {
-                                "id": patient_info.id,
-                                "birth_date": patient_info.birth_date.isoformat(),
-                                "gender": patient_info.gender,
-                                "ssn": patient_info.ssn,
-                                "first_name": patient_info.first_name,
-                                "last_name": patient_info.last_name,
-                                "city": patient_info.city,
-                                "state": patient_info.state,
-                                "country": patient_info.country,
-                                "postal_code": patient_info.postal_code,
-                                "age": patient_info.age,
-                                "creation_date":patient_info.creation_date.isoformat(),
-                            }
-                            patient_ref.set(patient_data)
-                            print(f"Added patient with ID {patient_id} to Firestore.")
-
-                    else:
-                        print("no patient info")
+                        save_to_firestore(db=self.db, patient_info=patient_info)
         except Exception as e:
             logging.error(
                 f"An error of type {type(e).__name__} occurred. Arguments:\n{e.args}"
@@ -185,17 +160,22 @@ class HL7MessageProcessor:
 
 
     def save_hl7_message_to_file(self, hl7_message, patient_id):
-        hl7_file_path = self.hl7_folder_path / f"{patient_id}.hl7"
+        hl7_file_path = self.hl7_folder_path / f"{datetime.now().strftime("%Y-%m-%d-%H-%M-%S-") + str(patient_id)}.hl7"
+        os.makedirs(os.path.dirname(hl7_file_path), exist_ok=True)
         with open(hl7_file_path, "w") as hl7_file:
-            hl7_file.write(str(hl7_message.msh.value) + "\r")
-            if self.messageType in ["ADT_A01"]:
-                hl7_file.write(str(hl7_message.evn.value) + "\r")
-            hl7_file.write(str(hl7_message.pid.value) + "\r")
-            hl7_file.write(str(hl7_message.pv1.value) + "\r")
-            if self.messageType in ["ORU_R01", "ORM_O01"]:
-                #hl7_file.write(str(hl7_message.obx.value) + "\r")
-                hl7_file.write(str(hl7_message.orc.value) + "\r")
-                hl7_file.write(str(hl7_message.obr.value) + "\r")
+            # hl7_file.write(str(hl7_message.msh.value) + "\r")
+            # if self.messageType in ["ADT_A01"]:
+            #     hl7_file.write(str(hl7_message.evn.value) + "\r")
+            # hl7_file.write(str(hl7_message.pid.value) + "\r")
+            # hl7_file.write(str(hl7_message.pv1.value) + "\r")
+            # if self.messageType in ["ORU_R01", "ORM_O01"]:
+            #     #hl7_file.write(str(hl7_message.obx.value) + "\r")
+            #     hl7_file.write(str(hl7_message.orc.value) + "\r")
+            #     hl7_file.write(str(hl7_message.obr.value) + "\r")
+            # if self.messageType in ["ORU_R01"]:
+            #     pass
+            for child in hl7_message.children:
+                hl7_file.write(child.to_er7() + "\r")
 
 
 def initialize_firestore() -> firestore.client:

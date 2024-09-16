@@ -11,7 +11,7 @@ def create_evn(hl7):
     try:
         request_date = create_obr_time()
 
-        hl7.evn.evn_1 = "A03"
+        hl7.evn.evn_1 = "A01"
         hl7.evn.evn_2 = request_date
         
     except Exception as ae:
