@@ -1092,6 +1092,14 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     return count, query
 
 
+def patient_exists(db: firestore.client, patient_info: PatientInfo) -> bool:
+    patient_ref = db.collection(DB_COLLECTION).document(patient_info.id)
+    if (patient_ref.get().exists):
+        return True
+    else:
+        return False
+
+
 def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_record:bool=False) -> int:
         """Saves patient info to Firestore. 
 
@@ -1113,9 +1121,7 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_re
 
         try: 
             under_document_size_limit(db=db, patient_info=patient_info)
-            patient_id = patient_info.id
-            patient_ref = db.collection(DB_COLLECTION).document(patient_id)
-            if ((patient_ref.get().exists) and (not update_record)):
+            if patient_exists(db=db, patient_info=patient_info) and (not update_record):
                 raise Exception("Patient record already exists in the database.")
             else:
                 
@@ -1161,11 +1167,11 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_re
                         observations.append(observation.__dict__)
                     patient_data["observations"] = observations
 
-                patient_ref.set(patient_data)
+                db.collection(DB_COLLECTION).document(patient_info.id).set(patient_data)
                 if update_record:
-                    print(f"Patient with ID {patient_id} has been updated.")
+                    print(f"Patient with ID {patient_info.id} has been updated.")
                 else:
-                    print(f"Added patient with ID {patient_id} to Firestore.")
+                    print(f"Added patient with ID {patient_info.id} to Firestore.")
                     
                 return 200
 
