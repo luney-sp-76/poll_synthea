@@ -23,7 +23,7 @@ import requests
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
-DB_COLLECTION = "demo"
+DB_COLLECTION = "hl7_dict"
 
 
 # generate a random time for the OBR segment
@@ -162,14 +162,14 @@ def create_patient_hl7v2_id(db: firestore.client):
     db_ref = db.collection(DB_COLLECTION)
     query = (
         # Don't limit in case of invalid ID creation - need alternatives
-        db_ref.order_by("hl7v2_id", direction=firestore.Query.DESCENDING)
+        db_ref.order_by("max_hl7v2_id", direction=firestore.Query.DESCENDING)
     )
 
     results = query.stream()
     for result in results:
-        greatest_id = result._data["hl7v2_id"]
-        if type(greatest_id) == list:
-            greatest_id = max(greatest_id)
+        greatest_id = result._data["max_hl7v2_id"]
+        # if type(greatest_id) == list:
+        #     greatest_id = max(greatest_id)
         
         # Checking format of hl7v2 ID
         if ((len(greatest_id) == 17) and (greatest_id[8:] == "^^^PAS^MR")):
@@ -196,7 +196,8 @@ class PatientInfo:
 
     Attributes: 
     - id
-    - hl7v2_id: ``list[str]``
+    - hl7v2_id: ``dict[str, str]``
+    - max_hl7v2_id : ``str``
     - birth_date
     - gender
     - ssn
@@ -232,15 +233,11 @@ class PatientInfo:
         age,
         creation_date,
         hl7v2_id = None,
+        max_hl7v2_id = None
     ):
         self.id = id
-
-        # Create id array and assign first id 
-        if hl7v2_id: 
-            self.hl7v2_id = hl7v2_id
-        else:
-            self.hl7v2_id: list[str] = []
-
+        self.hl7v2_id = hl7v2_id
+        self.max_hl7v2_id = max_hl7v2_id
         self.birth_date = birth_date
         self.gender = gender
         self.ssn = ssn
@@ -260,19 +257,19 @@ class PatientInfo:
 
 
     def __repr__(self):  
-        return ("PatientInfo id:% s hl7v2_id:% s birth_date:% s gender:% s ssn:% s first_name:% s middle_name:% s last_name:% s "
+        return ("PatientInfo id:% s hl7v2_id:% s max_hl7v2_id:% s birth_date:% s gender:% s ssn:% s first_name:% s middle_name:% s last_name:% s "
                 "address:% s address_2:% s city:% s country:% s post_code:% s country_code:% s age:% s creation_date:% s"
                 "conditions:% s observations:% s") % \
-                (self.id, self.hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
+                (self.id, self.hl7v2_id, self.max_hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
                  self.address, self.address_2, self.city, self.country, self.post_code, self.country_code, self.age, self.creation_date, 
                  self.conditions, self.observations)
     
 
     def __str__(self):
-        return ("From str method of PatientInfo: id is % s, hl7v2_id is % s, birth_date is % s, gender is % s, ssn is % s, "
+        return ("From str method of PatientInfo: id is % s, hl7v2_id is % s, max_hl7v2_id is % s, birth_date is % s, gender is % s, ssn is % s, "
                 "first_name is % s, middle_name is % s, last_name is % s, address is % s, address_2 is % s, city is % s, "
                 "country is % s, post_code is % s, country_code is % s, age is % s, creation_date is % s, conditions is % s, observations is % s") % \
-                (self.id, self.hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
+                (self.id, self.hl7v2_id, self.max_hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
                  self.address, self.address_2, self.city, self.country, self.post_code, self.country_code, self.age, self.creation_date, 
                  self.conditions, self.observations)
 
@@ -462,9 +459,9 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
             else:
                 middle_name = None
 
-            # Create patient id array
-            hl7v2_id = []
-            hl7v2_id.append(create_patient_hl7v2_id(db=db))
+            # Create patient id dict
+            hl7v2_id_dict = {}
+            hl7v2_id_dict[birth_date.isoformat()] = create_patient_hl7v2_id(db=db)
 
 
             # If true, reading from synthetic Fhir json generated using Synthea
@@ -503,7 +500,8 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
                 country_code = country_code,
                 age=age,
                 creation_date=date.today(),
-                hl7v2_id=hl7v2_id
+                hl7v2_id=hl7v2_id_dict,
+                max_hl7v2_id=hl7v2_id_dict[birth_date.isoformat()]
             )
             # break  # Assuming there's only one patient resource per FHIR message
 
@@ -651,12 +649,14 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
     if ("hl7v2_id" in doc._data):
         hl7v2_id = doc._data["hl7v2_id"]
     else:
-        hl7v2_id = create_patient_hl7v2_id(db=db)
+        hl7v2_id = {} 
+        hl7v2_id[doc._data["birth_date"]]= create_patient_hl7v2_id(db=db)
 
     # Create patient_info object for further use 
     patient_info = PatientInfo(
         id=doc._data["id"],
         hl7v2_id=hl7v2_id,
+        max_hl7v2_id=doc._data["max_hl7v2_id"],
         birth_date=doc._data["birth_date"],
         gender=doc._data["gender"],
         ssn=doc._data["ssn"],
@@ -912,7 +912,7 @@ def parse_HL7_message(msg:str, db:firestore.client):
     return hl7, patient_info
 
 
-def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
+def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo] | int: 
     """
     Pull patient information from Firestorm, given an age range. If not enough patients exist in the firestore, 
     they will be generated using poll_synthea and the HL7 processor. 
@@ -924,7 +924,7 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
     """
 
     patients = []
-    uploaded_patients = []
+    # uploaded_patients = []
 
     while (len(patients) == 0):
         count, query = count_patient_records(db, lower, upper, peter_pan)
@@ -944,44 +944,48 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
                 else: 
                     patient_info = update_retrieved_patient_age(patient_info=patient_info)
 
+                # Change DOB and age, and assign new HL7v2 ID corresponding to new age
+                # patient_info = modify_for_age_range(db=db, patient_info=patient_info, lower=lower, upper=upper)
+
                 patients.append(patient_info)
 
             # Return a list of patients     
             return patients
         
         else: 
-            print(f"Database only has {count} matching patient(s) - generating new patients...")
+            print(f"Database only has {count} patient(s).")
+            time.sleep(2)
+            return num_of_patients - count
+            # info = {
+            #     "number_of_patients": int(num_of_patients - count),
+            #     "age_from": lower, 
+            #     "age_to": upper, 
+            #     "sex": "F"
+            # }
 
-            info = {
-                "number_of_patients": int(num_of_patients - count),
-                "age_from": lower, 
-                "age_to": upper, 
-                "sex": "F"
-            }
+            # # Generate patients using poll_synthea
+            # call_for_patients(info=info)
 
-            # Generate patients using poll_synthea
-            call_for_patients(info=info)
+            # # Iterate through FHIR JSON files in the work folder
+            # for file in work_folder_path.glob("*.json"):
+            #     if file.name not in uploaded_patients:
+            #         try: 
+            #             with open(file, "r") as f:
+            #                 fhir_message = f.read()
 
-            # Iterate through FHIR JSON files in the work folder
-            for file in work_folder_path.glob("*.json"):
-                if file.name not in uploaded_patients:
-                    try: 
-                        with open(file, "r") as f:
-                            fhir_message = f.read()
-
-                            # Parse patient information from file 
-                            patient_info = parse_fhir_message(db=db, fhir_message=fhir_message)
-                            save_to_firestore(db=db, patient_info=patient_info)
-                            uploaded_patients.append(file.name)
+            #                 # Parse patient information from file 
+            #                 patient_info = parse_fhir_message(db=db, fhir_message=fhir_message)
+            #                 save_to_firestore(db=db, patient_info=patient_info)
+            #                 uploaded_patients.append(file.name)
                             
                             
-                    # Note: printing name of exception type rather than full exception, as 
-                    # for problems parsing the string it will print the entire string - this can be
-                    # thousands of lines of text, and messes up the terminal.
-                    except UnicodeDecodeError as e:
-                        print(f"Problem reading file...{type(e).__name__}")
-                    except Exception as e: 
-                        print(f"Couldn't parse patient information from fhir message...{type(e).__name__}")
+            #         # Note: printing name of exception type rather than full exception, as 
+            #         # for problems parsing the string it will print the entire string - this can be
+            #         # thousands of lines of text, and messes up the terminal.
+            #         except UnicodeDecodeError as e:
+            #             print(f"Problem reading file...{type(e).__name__}")
+            #         except Exception as e: 
+            #             print(f"Couldn't parse patient information from fhir message...{type(e).__name__}")
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
@@ -999,7 +1003,7 @@ def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
     if type(birth_date) == str:
         birth_date = datetime.datetime.strptime(birth_date, "%Y-%m-%d")
 
-    # Find days passed since creation date 
+    # Find years passed since creation date 
     years_passed = (current_date.year - creation_date.year)
 
     # We only change their birth year, as most patients' DOB will be 01/01/...
@@ -1033,6 +1037,35 @@ def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
     return patient_info
 
 
+def modify_for_age_range(db:firestore.client, patient_info:PatientInfo, lower: int, upper:int) -> PatientInfo:
+    
+    if not (lower <= patient_info.age <= upper): 
+        
+        require_new_hl7v2_id = True
+
+        # Look through existing HL7v2 IDs to check for appropriate IDs
+        for key in patient_info.hl7v2_id.keys():
+            key_age = calculate_age(key)
+            if lower <= key_age <= upper:
+                patient_info.birth_date = key
+                patient_info.age = key_age
+                require_new_hl7v2_id = False 
+                break
+        
+        # If no appropriate IDs have been found, make new one 
+        if require_new_hl7v2_id:
+            new_age = random.randint(lower, upper)
+            patient_info = assign_age_to_patient(patient_info=patient_info, desired_age=new_age, index=None)
+            dob = patient_info.birth_date
+            if type(dob) != str:
+                dob = dob.isoformat()
+            new_hl7v2_id = create_patient_hl7v2_id(db=db)
+            patient_info.hl7v2_id[dob] = new_hl7v2_id
+            patient_info.max_hl7v2_id = new_hl7v2_id
+        
+    return patient_info
+    
+
 def assign_age_to_patient(patient_info: PatientInfo, desired_age: int, index: int | None) -> PatientInfo:
     """Changes the patient's date of birth and age to the desired age
     
@@ -1057,39 +1090,46 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
 
     Returns both the count of the patients in the db, and the query used in the check. 
     """
-
-    # Form the query based on peter_pan bool 
-    if peter_pan:
-
-        # We can simply collect patients using 'age', as will be changing their dob to match
-        query = db.collection(DB_COLLECTION).where(filter=FieldFilter("age", "<=", upper))\
-                                            .where(filter=FieldFilter("age", ">=", lower))
-    else:
-
-        # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
-        current_date = date.today()
-
-        # If they are X years old today, their DOB will fall between these ranges
-        lower_year = current_date.year - lower
-        upper_dob = current_date.replace(year=lower_year)
-
-        upper_year = current_date.year - upper 
-        lower_dob = current_date.replace(year=upper_year)
-
-        # Find all records between the two valid DOBs
-        query = db.collection(DB_COLLECTION).where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
-                                            .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
     
-    aggregate_query = aggregation.AggregationQuery(query)
+    # query = db.collection(DB_COLLECTION)
 
-    # `alias` to provides a key for accessing the aggregate query results
-    aggregate_query.count(alias="all")
+    # # Form the query based on peter_pan bool 
+    # if peter_pan:
 
-    # Get the number of patient records which fit the criteria
-    results = aggregate_query.get()
-    count = results[0][0].value
+    #     # We can simply collect patients using 'age', as will be changing their dob to match
+    #     query = db.collection(DB_COLLECTION).where(filter=FieldFilter("age", "<=", upper))\
+    #                                         .where(filter=FieldFilter("age", ">=", lower))
+    # else:
 
-    return count, query
+    #     # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
+    #     current_date = date.today()
+
+    #     # If they are X years old today, their DOB will fall between these ranges
+    #     lower_year = current_date.year - lower
+    #     upper_dob = current_date.replace(year=lower_year)
+
+    #     upper_year = current_date.year - upper 
+    #     lower_dob = current_date.replace(year=upper_year)
+
+    #     # Find all records between the two valid DOBs
+    #     query = db.collection(DB_COLLECTION).where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
+    #                                         .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
+    
+    # aggregate_query = aggregation.AggregationQuery(query)
+
+    # # `alias` to provides a key for accessing the aggregate query results
+    # aggregate_query.count(alias="all")
+
+    # # Get the number of patient records which fit the criteria
+    # results = aggregate_query.get()
+    # count = results[0][0].value
+    
+    my_collection = db.collection(DB_COLLECTION)
+    count_query = my_collection.count()
+    query_result = count_query.get()
+    count = query_result[0][0].value
+
+    return count, my_collection
 
 
 def patient_exists(db: firestore.client, patient_info: PatientInfo) -> bool:
@@ -1126,19 +1166,22 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_re
             else:
                 
                 # Preparations before uploading 
-                if patient_info.hl7v2_id:
-                    hl7v2_id = patient_info.hl7v2_id
-                else:
-                    hl7v2_id = [create_patient_hl7v2_id(db=db)]
-
                 if type(patient_info.birth_date) != str:
                     patient_info.birth_date = patient_info.birth_date.isoformat()
                 if type(patient_info.creation_date) != str:
                     patient_info.creation_date = patient_info.creation_date.isoformat()
+                    
+                if not patient_info.hl7v2_id:
+                    hl7v2_id = {}
+                    hl7v2_id[patient_info.birth_date] = create_patient_hl7v2_id(db=db)
+                    
+                if not patient_info.max_hl7v2_id:
+                    patient_info.max_hl7v2_id = patient_info.hl7v2_id[patient_info.birth_date]
 
                 patient_data = {
                     "id": patient_info.id,
-                    "hl7v2_id": hl7v2_id,
+                    "hl7v2_id": patient_info.hl7v2_id,
+                    "max_hl7v2_id": patient_info.max_hl7v2_id,
                     "birth_date": patient_info.birth_date,
                     "gender": patient_info.gender,
                     "ssn":patient_info.ssn,
