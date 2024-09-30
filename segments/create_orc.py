@@ -16,5 +16,6 @@ def create_orc(hl7, placer_order_num, filler_order_id):
         print(f"Could not create MSH Segment: {ae}")
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())
-
-    return hl7
+        return None
+    else:
+        return hl7

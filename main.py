@@ -32,21 +32,23 @@ def create_message_header(messageType):
         hl7 = core.Message(messageType, version="2.4")
     except Exception as e:
         hl7 = None
-        print(f"An error occurred while initializing the HL7 Message: {e}")
-        print(f"messageType: {messageType}")
+        print(f"An error occurred while initializing the HL7 Message: {repr(e)}")
+        return hl7
+    else:
+        # Create MSH Segment
+        hl7 = create_msh.create_msh(messageType, control_id, hl7, current_date) # MSH Segment
 
-    # Create MSH Segment
-    hl7 = create_msh.create_msh(messageType, control_id, hl7, current_date) # MSH Segment
-
-    return hl7
+        return hl7
 
 
 # Creates an HL7 ADT message includes the MSH segment then options based on message type then returns an HL7 message
 def create_adt_message(patient_info, messageType):
+    
+    # Construction is halted if return values is None 
     hl7 = create_message_header(messageType)
-    hl7 = create_evn.create_evn(hl7)
-    hl7 = create_pid.create_pid(patient_info, hl7)
-    hl7 = create_pv1.create_pv1(patient_info, hl7)
+    hl7 = create_evn.create_evn(hl7) if hl7 else None
+    hl7 = create_pid.create_pid(patient_info, hl7) if hl7 else None
+    hl7 = create_pv1.create_pv1(hl7) if hl7 else None
   
     return hl7
 
@@ -54,12 +56,12 @@ def create_adt_message(patient_info, messageType):
 # Creates an HL7 ORM message includes the MSH segment then options based on message type then returns an HL7 message
 def create_orm_message(patient_info:PatientInfo, messageType:str="ORM_O01"):
     hl7 = create_message_header(messageType)
-    hl7 = create_pid.create_pid(patient_info, hl7)
-    hl7 = create_pv1.create_pv1(patient_info, hl7)
+    hl7 = create_pid.create_pid(patient_info, hl7) if hl7 else None
+    hl7 = create_pv1.create_pv1(hl7) if hl7 else None
     placer_order_num = create_placer_order_num()
     filler_order_id = create_filler_order_num()
-    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
-    hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
+    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id) if hl7 else None
+    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7) if hl7 else None
 
     return hl7
 
@@ -67,24 +69,24 @@ def create_orm_message(patient_info:PatientInfo, messageType:str="ORM_O01"):
 # Creates an HL7 ORU message includes the MSH segment then options based on message type then returns an HL7 message
 def create_oru_message(patient_info:PatientInfo, messageType:str="ORU_R01"):
     hl7 = create_message_header(messageType)
-    hl7 = create_pid.create_pid(patient_info, hl7)
-    hl7 = create_pv1.create_pv1(patient_info, hl7)
+    hl7 = create_pid.create_pid(patient_info, hl7) if hl7 else None
+    hl7 = create_pv1.create_pv1(hl7) if hl7 else None
     placer_order_num = create_placer_order_num()
     filler_order_id = create_filler_order_num()
-    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
-    hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
-    hl7 = create_obx.create_obx(hl7)
+    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id) if hl7 else None
+    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7) if hl7 else None
+    hl7 = create_obx.create_obx(hl7) if hl7 else None
 
     return hl7
 
 
 def create_oml_message(patient_info, messageType):
-    hl7 = create_message_header(messageType)
-    hl7 = create_pid.create_pid(patient_info, hl7)
+    hl7 = create_message_header(messageType) if hl7 else None
+    hl7 = create_pid.create_pid(patient_info, hl7) if hl7 else None
     placer_order_num = create_placer_order_num()
     filler_order_id = create_filler_order_num()
-    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id)
-    hl7 = create_obr.create_obr(patient_info, placer_order_num, filler_order_id, hl7)
+    hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id) if hl7 else None
+    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7) if hl7 else None
 
     return hl7
 
@@ -163,17 +165,6 @@ class HL7MessageProcessor:
         hl7_file_path = self.hl7_folder_path / f"{datetime.now().strftime("%Y-%m-%d-%H-%M-%S-") + str(patient_id)}.hl7"
         os.makedirs(os.path.dirname(hl7_file_path), exist_ok=True)
         with open(hl7_file_path, "w") as hl7_file:
-            # hl7_file.write(str(hl7_message.msh.value) + "\r")
-            # if self.messageType in ["ADT_A01"]:
-            #     hl7_file.write(str(hl7_message.evn.value) + "\r")
-            # hl7_file.write(str(hl7_message.pid.value) + "\r")
-            # hl7_file.write(str(hl7_message.pv1.value) + "\r")
-            # if self.messageType in ["ORU_R01", "ORM_O01"]:
-            #     #hl7_file.write(str(hl7_message.obx.value) + "\r")
-            #     hl7_file.write(str(hl7_message.orc.value) + "\r")
-            #     hl7_file.write(str(hl7_message.obr.value) + "\r")
-            # if self.messageType in ["ORU_R01"]:
-            #     pass
             for child in hl7_message.children:
                 hl7_file.write(child.to_er7() + "\r")
 

@@ -8,7 +8,7 @@ from ..generators.utilities import create_visit_instiution
 
 
 # Creates a PV1 segment for the HL7 message requires a patient_info object and the hl7 message
-def create_pv1(patient_info, hl7):
+def create_pv1(hl7):
     try:
         hl7.pv1.pv1_1 = "1"  # Set Patient Class to Inpatient
         hl7.pv1.pv1_2 = "O"  # Set Visit Number
@@ -21,5 +21,6 @@ def create_pv1(patient_info, hl7):
         print(f"Could not create PV1 Segment: {ae}")
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())
-
-    return hl7
+        return None
+    else:
+        return hl7

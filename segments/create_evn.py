@@ -19,5 +19,6 @@ def create_evn(hl7):
         print(f"Could not create EVN Segment: {ae}")
         logging.error(f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}")
         logging.error(traceback.format_exc())
-
-    return hl7
+        return None
+    else:
+        return hl7

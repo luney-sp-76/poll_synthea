@@ -736,15 +736,12 @@ def parse_HL7_message(msg:str, db:firestore.client):
         pid = hl7.oru_r01_patient_result.oru_r01_patient.pid
     elif (hl7.msh.msh_9.to_er7() == "ORM^O01"):
         pid = hl7.orm_o01_patient.pid
-    elif (hl7.msh.msh_9.to_er7() == "ORU^R01"):
-        pid = hl7.oru_r01_patient_result.oru_r01_patient.pid
     else:
         pid = hl7.pid
 
     # Empty list if no PID
     if (pid):
         try: 
-
             if pid.pid_2:
                 patient_id = pid.pid_2.to_er7()
             else:
@@ -760,10 +757,11 @@ def parse_HL7_message(msg:str, db:firestore.client):
                     break
 
                 patient_id = increment_id(greatest_id)
-
-            hl7v2_id = []
+                
+            hl7v2_id = {}
             for child in pid.pid_3:
-                hl7v2_id.append(child.to_er7())
+                hl7v2_id[pid.pid_7.to_er7()] = child.to_er7()
+                
             print("Got patient HL7v2 id")
             print(hl7v2_id)
 
@@ -1176,7 +1174,7 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo, update_re
                     hl7v2_id[patient_info.birth_date] = create_patient_hl7v2_id(db=db)
                     
                 if not patient_info.max_hl7v2_id:
-                    patient_info.max_hl7v2_id = patient_info.hl7v2_id[patient_info.birth_date]
+                    patient_info.max_hl7v2_id = max(patient_info.hl7v2_id.values())
 
                 patient_data = {
                     "id": patient_info.id,
@@ -1242,22 +1240,24 @@ def update_following_ORM_O01(db: firestore.client, patient_info: PatientInfo) ->
     retrieved_patient_info = None
     db_ref = db.collection(DB_COLLECTION)
 
-    for hl7v2_id in patient_info.hl7v2_id:
+    for hl7v2_id in patient_info.hl7v2_id.values():
         if not retrieved_patient_info:
-            filter1 = FieldFilter("hl7v2_id", "==", hl7v2_id)
-            filter2 = FieldFilter("hl7v2_id", "array_contains", hl7v2_id)
+            filter1 = FieldFilter("address", "==", patient_info.address)
+            filter2 = FieldFilter("post_code", "==", patient_info.post_code)
             or_filter = Or(filters=[filter1, filter2])
 
             query = (
-                db_ref.where(filter=or_filter).limit(1)
+                db_ref.where(filter=or_filter)
             )
 
             print(f"Looking for patient with hl7_v2 id {hl7v2_id}...")
             results = query.stream()
 
             for doc in results:
-                retrieved_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
-                print("Found patient record.")
+                temp_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+                if hl7v2_id in temp_patient_info.hl7v2_id.values():
+                    retrieved_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+                    print("Found patient record.")
 
     if retrieved_patient_info: 
         retrieved_patient_info.observations.extend(patient_info.observations)
@@ -1287,22 +1287,24 @@ def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo, ac
     retrieved_patient_info = None
     db_ref = db.collection(DB_COLLECTION)
 
-    for hl7v2_id in patient_info.hl7v2_id:
+    for hl7v2_id in patient_info.hl7v2_id.values():
         if not retrieved_patient_info:
-            filter1 = FieldFilter("hl7v2_id", "==", hl7v2_id)
-            filter2 = FieldFilter("hl7v2_id", "array_contains", hl7v2_id)
+            filter1 = FieldFilter("address", "==", patient_info.address)
+            filter2 = FieldFilter("post_code", "==", patient_info.post_code)
             or_filter = Or(filters=[filter1, filter2])
 
             query = (
-                db_ref.where(filter=or_filter).limit(1)
+                db_ref.where(filter=or_filter)
             )
 
             print(f"Looking for patient with hl7_v2 id {hl7v2_id}...")
             results = query.stream()
 
             for doc in results:
-                retrieved_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
-                print("Found patient record.")
+                temp_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+                if hl7v2_id in temp_patient_info.hl7v2_id.values():
+                    retrieved_patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+                    print("Found patient record.")
 
     if retrieved_patient_info: 
         
@@ -1315,8 +1317,6 @@ def update_following_ORU_R01(db: firestore.client, patient_info: PatientInfo, ac
                 print("Corresponding observation request identified.")
                 # Update the retrieved info with the new observation results
                 retrieved_patient_info.observations[i] = patient_info.observations[0]
-
-                # print(retrieved_patient_info)
 
                 print("Updating record...")
                 return save_to_firestore(db=db, patient_info=retrieved_patient_info, update_record=True)

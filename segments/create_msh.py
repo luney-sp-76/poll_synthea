@@ -36,5 +36,7 @@ def create_msh(messageType, control_id, hl7, current_date):
             f"An error of type {type(ae).__name__} occurred. Arguments:\n{ae.args}"
         )
         logging.error(traceback.format_exc())
-
-    return hl7
+        
+        return None
+    else:
+        return hl7
