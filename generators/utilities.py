@@ -38,7 +38,8 @@ def create_obr_time():
 def create_placer_order_num():
     prefix = "PL"
     
-    placer_order_number = f"{prefix}-{uuid.uuid4()}"
+    # Needs to be 10 characters 
+    placer_order_number = f"{prefix}-{uuid.uuid4()[:8]}"
         
     return placer_order_number
 
@@ -50,9 +51,10 @@ def create_filler_order_num():
     # # format the random number as 1^^23^4
     # filler_order_id = f"1^^{random_number // 10000}^{random_number % 10000}"
     prefix = "FL"
-   
-    filler_order_number = f"{prefix}-{uuid.uuid4()}"
-    
+
+    # Again, needs to be 10 characters 
+    filler_order_number = f"{prefix}-{uuid.uuid4()[:8]}"
+
     return filler_order_number
 
 
@@ -936,11 +938,13 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
             for doc in docs:
                 patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
 
-                # Matches age with dob - method for doing so depends on the peter_pan bool
-                if peter_pan:
-                    patient_info = update_retrieved_patient_dob(patient_info=patient_info)
-                else: 
-                    patient_info = update_retrieved_patient_age(patient_info=patient_info)
+                # # Matches age with dob - method for doing so depends on the peter_pan bool
+                # if peter_pan:
+                #     patient_info = update_retrieved_patient_dob(patient_info=patient_info)
+                # else: 
+                #     patient_info = update_retrieved_patient_age(patient_info=patient_info)
+                
+                patient_info = update_retrieved_patient_age(patient_info=patient_info)
 
                 # Change DOB and age, and assign new HL7v2 ID corresponding to new age
                 # patient_info = modify_for_age_range(db=db, patient_info=patient_info, lower=lower, upper=upper)
@@ -954,36 +958,6 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
             print(f"Database only has {count} patient(s).")
             time.sleep(2)
             return num_of_patients - count
-            # info = {
-            #     "number_of_patients": int(num_of_patients - count),
-            #     "age_from": lower, 
-            #     "age_to": upper, 
-            #     "sex": "F"
-            # }
-
-            # # Generate patients using poll_synthea
-            # call_for_patients(info=info)
-
-            # # Iterate through FHIR JSON files in the work folder
-            # for file in work_folder_path.glob("*.json"):
-            #     if file.name not in uploaded_patients:
-            #         try: 
-            #             with open(file, "r") as f:
-            #                 fhir_message = f.read()
-
-            #                 # Parse patient information from file 
-            #                 patient_info = parse_fhir_message(db=db, fhir_message=fhir_message)
-            #                 save_to_firestore(db=db, patient_info=patient_info)
-            #                 uploaded_patients.append(file.name)
-                            
-                            
-            #         # Note: printing name of exception type rather than full exception, as 
-            #         # for problems parsing the string it will print the entire string - this can be
-            #         # thousands of lines of text, and messes up the terminal.
-            #         except UnicodeDecodeError as e:
-            #             print(f"Problem reading file...{type(e).__name__}")
-            #         except Exception as e: 
-            #             print(f"Couldn't parse patient information from fhir message...{type(e).__name__}")
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
@@ -1088,46 +1062,46 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
 
     Returns both the count of the patients in the db, and the query used in the check. 
     """
+    # if peter_pan == False:
+    #     query = db.collection(DB_COLLECTION)
+
+    #     # Form the query based on peter_pan bool 
+    #     if peter_pan:
+
+    #         # We can simply collect patients using 'age', as will be changing their dob to match
+    #         query = db.collection(DB_COLLECTION).where(filter=FieldFilter("age", "<=", upper))\
+    #                                             .where(filter=FieldFilter("age", ">=", lower))
+    #     else:
+
+    #         # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
+    #         current_date = date.today()
+
+    #         # If they are X years old today, their DOB will fall between these ranges
+    #         lower_year = current_date.year - lower
+    #         upper_dob = current_date.replace(year=lower_year)
+
+    #         upper_year = current_date.year - upper 
+    #         lower_dob = current_date.replace(year=upper_year)
+
+    #         # Find all records between the two valid DOBs
+    #         query = db.collection(DB_COLLECTION).where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
+    #                                             .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
+        
+    #     aggregate_query = aggregation.AggregationQuery(query)
+
+    #     # `alias` to provides a key for accessing the aggregate query results
+    #     aggregate_query.count(alias="all")
+
+    #     # Get the number of patient records which fit the criteria
+    #     results = aggregate_query.get()
+    #     count = results[0][0].value
     
-    # query = db.collection(DB_COLLECTION)
-
-    # # Form the query based on peter_pan bool 
-    # if peter_pan:
-
-    #     # We can simply collect patients using 'age', as will be changing their dob to match
-    #     query = db.collection(DB_COLLECTION).where(filter=FieldFilter("age", "<=", upper))\
-    #                                         .where(filter=FieldFilter("age", ">=", lower))
-    # else:
-
-    #     # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
-    #     current_date = date.today()
-
-    #     # If they are X years old today, their DOB will fall between these ranges
-    #     lower_year = current_date.year - lower
-    #     upper_dob = current_date.replace(year=lower_year)
-
-    #     upper_year = current_date.year - upper 
-    #     lower_dob = current_date.replace(year=upper_year)
-
-    #     # Find all records between the two valid DOBs
-    #     query = db.collection(DB_COLLECTION).where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
-    #                                         .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
-    
-    # aggregate_query = aggregation.AggregationQuery(query)
-
-    # # `alias` to provides a key for accessing the aggregate query results
-    # aggregate_query.count(alias="all")
-
-    # # Get the number of patient records which fit the criteria
-    # results = aggregate_query.get()
-    # count = results[0][0].value
-    
-    my_collection = db.collection(DB_COLLECTION)
-    count_query = my_collection.count()
+    query = db.collection(DB_COLLECTION)
+    count_query = query.count()
     query_result = count_query.get()
     count = query_result[0][0].value
 
-    return count, my_collection
+    return count, query
 
 
 def patient_exists(db: firestore.client, patient_info: PatientInfo) -> bool:
