@@ -39,7 +39,8 @@ def run_synthea(x,age, sex):
         "--exporter.fhir.use_shr_extensions=false",
         "--exporter.fhir.use_us_core_ig=false",
         "--exporter.fhir.use_us_core_r4_ig=false",
-        "--exporter.fhir.use_synthea_extensions=false"
+        "--exporter.fhir.use_synthea_extensions=false", 
+        "--generate.only_alive_patients=true"
 
     ]
     temp_count: int = 0

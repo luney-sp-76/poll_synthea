@@ -2,6 +2,7 @@
 import json
 import logging
 from pathlib import Path
+import re
 import random, string, datetime
 from datetime import date, datetime
 import datetime
@@ -37,9 +38,9 @@ def create_obr_time():
 # generate a random placer order number for the HL7 message
 def create_placer_order_num():
     prefix = "PL"
-    
-    # Needs to be 10 characters 
-    placer_order_number = f"{prefix}-{uuid.uuid4()[:8]}"
+
+    # Needs to be 10 characters
+    placer_order_number = f"{prefix}-{str(uuid.uuid4())[:8]}"
         
     return placer_order_number
 
@@ -53,7 +54,7 @@ def create_filler_order_num():
     prefix = "FL"
 
     # Again, needs to be 10 characters 
-    filler_order_number = f"{prefix}-{uuid.uuid4()[:8]}"
+    filler_order_number = f"{prefix}-{str(uuid.uuid4())[:8]}"
 
     return filler_order_number
 
@@ -958,6 +959,35 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
             print(f"Database only has {count} patient(s).")
             time.sleep(2)
             return num_of_patients - count
+
+
+def retrieve_firestore_patients_by_name(db: firestore.client, first_name: str, last_name: str) -> list[PatientInfo] | None: 
+    
+    patients = []
+    
+    # Define regex to match 'James' followed by numbers
+    first_name_pattern = re.compile(rf"^{first_name}\d+$", re.IGNORECASE)
+    last_name_pattern = re.compile(rf"^{last_name}\d+$", re.IGNORECASE)
+    
+    all_records = db.collection(DB_COLLECTION).stream()
+    
+    filtered_records = [record for record in all_records 
+                        if first_name_pattern.match(record._data["first_name"]) 
+                        and last_name_pattern.match(record._data["last_name"])]
+    
+    # If there are any matching patients:
+    if filtered_records:
+        for record in filtered_records:
+            patient = firestore_doc_to_patient_info(db=db, doc=record)
+            patients.append(patient)
+    
+    return patients
+    
+
+def retrieve_all_patient_records(db: firestore.client): 
+    all_records = db.collection(DB_COLLECTION).stream()
+    
+    return all_records
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
