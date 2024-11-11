@@ -54,28 +54,29 @@ def create_adt_message(patient_info, messageType):
 
 
 # Creates an HL7 ORM message includes the MSH segment then options based on message type then returns an HL7 message
-def create_orm_message(patient_info:PatientInfo, messageType:str="ORM_O01"):
+def create_orm_message(patient_info:PatientInfo, messageType:str="ORM_O01", panel_choice:str="R-ANKLE^Ankle X-ray^L"):
     hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7) if hl7 else None
     hl7 = create_pv1.create_pv1(hl7) if hl7 else None
     placer_order_num = create_placer_order_num()
     filler_order_id = create_filler_order_num()
     hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id) if hl7 else None
-    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7) if hl7 else None
+    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7, obr4=panel_choice) if hl7 else None
 
     return hl7
 
 
 # Creates an HL7 ORU message includes the MSH segment then options based on message type then returns an HL7 message
-def create_oru_message(patient_info:PatientInfo, messageType:str="ORU_R01"):
+def create_oru_message(patient_info:PatientInfo, messageType:str="ORU_R01", panel_choice:str="R-ANKLE^Ankle X-ray^L", 
+                       result:str="Normal findings, no fracture detected", result_type:str="TX", units:str=None):
     hl7 = create_message_header(messageType)
     hl7 = create_pid.create_pid(patient_info, hl7) if hl7 else None
     hl7 = create_pv1.create_pv1(hl7) if hl7 else None
     placer_order_num = create_placer_order_num()
     filler_order_id = create_filler_order_num()
     hl7 = create_orc.create_orc(hl7, placer_order_num, filler_order_id) if hl7 else None
-    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7) if hl7 else None
-    hl7 = create_obx.create_obx(hl7) if hl7 else None
+    hl7 = create_obr.create_obr(placer_order_num, filler_order_id, hl7, obr4=panel_choice) if hl7 else None
+    hl7 = create_obx.create_obx(hl7, result_type=result_type, panel_code_desc=panel_choice, result=result, units=units) if hl7 else None
 
     return hl7
 
@@ -161,8 +162,10 @@ class HL7MessageProcessor:
             logging.error(traceback.format_exc())
 
 
-    def save_hl7_message_to_file(self, hl7_message, patient_id):
-        hl7_file_path = self.hl7_folder_path / f"{datetime.now().strftime("%Y-%m-%d-%H-%M-%S-") + str(patient_id)}.hl7"
+    def save_hl7_message_to_file(self, hl7_message, patient_id, hl7_folder_path=None):
+        if not hl7_folder_path:
+            hl7_folder_path = self.hl7_folder_path
+        hl7_file_path = hl7_folder_path / f"{datetime.now().strftime("%Y-%m-%d-%H-%M-%S-") + str(patient_id)}.hl7"
         os.makedirs(os.path.dirname(hl7_file_path), exist_ok=True)
         with open(hl7_file_path, "w") as hl7_file:
             for child in hl7_message.children:

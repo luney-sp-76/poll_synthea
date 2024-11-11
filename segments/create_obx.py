@@ -2,13 +2,27 @@
 import logging
 import traceback
 
-def create_obx(hl7):
+def create_obx(hl7, result_type:str="TX", panel_code_desc:str="R-ANKLE^Ankle X-ray^L", 
+               result="Normal findings, no fracture detected", units:str=None):
     try:
-        hl7.obx.obx_1 = "1"  # New Order
-        hl7.obx.obx_2 = "TX"
-        hl7.obx.obx_3 = "R-ANKLE^Ankle X-ray^L"
-        hl7.obx.obx_5 = "Normal findings, no fracture detected"
-        hl7.obx.obx_11 = "F"
+        # New Order
+        hl7.obx.obx_1 = "1"  
+        
+        # Type of result (text, numeric, etc.)
+        hl7.obx.obx_2 = result_type
+        
+        # Panel code, description, ?
+        hl7.obx.obx_3 = panel_code_desc
+        
+        # Result 
+        hl7.obx.obx_5 = result
+        
+        if result_type != "TX" and units:
+            hl7.obx.obx_6 = units
+        
+        # Status of result 
+        hl7.obx.obx_11 = "F" 
+        
     except Exception as ae:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
