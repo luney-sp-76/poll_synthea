@@ -18,9 +18,9 @@ def create_pid(patient_info:PatientInfo, hl7):
        hl7.pid.pid_11 = f"^^^{patient_info.city}^{patient_info.state}^{patient_info.postal_code}^{patient_info.country}"
        visitNo = create_visit_number()
        visitInstitution = create_visit_instiution()
-       #pid 18 - 1 component 1 COMMON.Visit.num  2 component 1 lab.Request.bill_number 3 component 4 COMMON.Visit.institution 
+       #pid 18 - Visit code  
        hl7.pid.pid_18 = visitNo + "^" + visitInstitution
-       #hl7.pid.pid_19 = patient_info.ssn
+       #hl7.pid.pid_19 = SSN
     except Exception as ae:
         print("An AssertionError occurred:", ae)
         print(f"Could not create MSH Segment: {ae}")
