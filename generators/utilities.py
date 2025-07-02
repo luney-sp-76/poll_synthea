@@ -1,9 +1,9 @@
 # utilities.py
-import logging
 from pathlib import Path
-import random, string, datetime
-from datetime import date, datetime
+import random
+import string
 import datetime
+from datetime import date
 import time
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
@@ -22,12 +22,11 @@ work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
 
 
-
 # generate a random time for the OBR segment
 def create_obr_time():
     random_days_ago = random.randint(1, 7)
     random_date = date.today() - datetime.timedelta(days=random_days_ago)
-
+    random_date = datetime.date.today() - datetime.timedelta(days=random_days_ago)
     return random_date.strftime("%Y%m%d%H%M")
 
 
@@ -36,7 +35,8 @@ def create_placer_order_num():
     order_id = "".join(
         ["{}".format(random.randint(0, 9)) for _ in range(0, 3)]
     ) + "".join(
-        ["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)]
+        ["{}".format(random.choice(string.ascii_uppercase))
+         for _ in range(0, 2)]
     )
     return order_id
 
@@ -55,26 +55,29 @@ def create_visit_instiution():
     visit_institution = "".join(
         ["{}".format(random.randint(0, 9)) for _ in range(0, 3)]
     ) + "".join(
-        ["{}".format(random.choice(string.ascii_uppercase)) for _ in range(0, 2)]
+        ["{}".format(random.choice(string.ascii_uppercase))
+         for _ in range(0, 2)]
     )
     return visit_institution
 
 
 # Creates a random visit number for the HL7 message
 def create_visit_number():
-    visit_number = "".join(["{}".format(random.randint(0, 9)) for _ in range(0, 3)])
+    visit_number = "".join(["{}".format(random.randint(0, 9))
+                           for _ in range(0, 3)])
     return visit_number
 
 
 # Creates a random control ID for the HL7 message
 def create_control_id():
     current_date_time = datetime.datetime.now()
-    formatted_date_minutes_milliseconds = current_date_time.strftime("%Y%m%d%H%M%S.%f")
+    formatted_date_minutes_milliseconds = current_date_time.strftime(
+        "%Y%m%d%H%M%S.%f")
     control_id = formatted_date_minutes_milliseconds.replace(".", "")
     return control_id
 
-  
-# Increments patient hl7v2_id by one  
+
+# Increments patient hl7v2_id by one
 def increment_patient_id(s):
     def increment_char(c):
         if 'A' <= c < 'Z':
@@ -87,7 +90,7 @@ def increment_patient_id(s):
             return 'A'
         else:
             return c
-    
+
     s = list(s)
     i = len(s) - 1
 
@@ -96,11 +99,11 @@ def increment_patient_id(s):
         if (s[i] >= 'A' and s[i] <= 'Z') or (s[i] >= '0' and s[i] <= '9' and s[i] != '0'):
             break
         i -= 1
-    
+
     return ''.join(s)
 
 
-# Creates a random patient ID for the patient 
+# Creates a random patient ID for the patient
 def create_patient_id(db: firestore.client):
     """Generates an hl7v2_id for a new patient, given the highest id currently 
     in the database. 
@@ -110,7 +113,7 @@ def create_patient_id(db: firestore.client):
 
     Returns: 
     - patient_id: ``String``, the fully-formed patient hl7v2_id. 
-    
+
     To do: 
     - Catch edge cases such as no ID being returned by query
     """
@@ -119,7 +122,8 @@ def create_patient_id(db: firestore.client):
     # Pull largest id from firebase
     db_ref = db.collection("full_fhir")
     query = (
-        db_ref.order_by("hl7v2_id", direction=firestore.Query.DESCENDING).limit(1)
+        db_ref.order_by(
+            "hl7v2_id", direction=firestore.Query.DESCENDING).limit(1)
     )
 
     results = query.stream()
@@ -127,7 +131,7 @@ def create_patient_id(db: firestore.client):
         greatest_id = result._data["hl7v2_id"]
         break
 
-    greatest_id = greatest_id[3 : 9]
+    greatest_id = greatest_id[3: 9]
 
     # Increment previous patient id to new value
     new_id = increment_patient_id(greatest_id)
@@ -135,7 +139,7 @@ def create_patient_id(db: firestore.client):
     # Generate new hl7v2_id in full
     patient_id = f"{synthea_code + new_id}^^^PAS^MR"
 
-    # Return new hl7v2_id 
+    # Return new hl7v2_id
     return patient_id
 
 
@@ -143,7 +147,7 @@ def create_patient_id(db: firestore.client):
 class PatientInfo:
     """A class which holds all patient information. 
 
-    Attributes: 
+    Attributes:
     - id
     - hl7v2_id: ``list[str]``
     - birth_date
@@ -163,6 +167,7 @@ class PatientInfo:
     - conditions: ``list[PatientCondition]``
     - observations: ``list[PatientObservation]``
     """
+
     def __init__(
         self,
         id,
@@ -174,18 +179,18 @@ class PatientInfo:
         last_name,
         address,
         address_2,
-        city, 
+        city,
         country,
         post_code,
         country_code,
         age,
         creation_date,
-        hl7v2_id = None,
+        hl7v2_id=None,
     ):
         self.id = id
 
-        # Create id array and assign first id 
-        if hl7v2_id: 
+        # Create id array and assign first id
+        if hl7v2_id:
             self.hl7v2_id = hl7v2_id
         else:
             self.hl7v2_id: list[str] = []
@@ -207,26 +212,24 @@ class PatientInfo:
         self.conditions: list[PatientCondition] = []
         self.observations: list[PatientObservation] = []
 
-
-    def __repr__(self):  
+    def __repr__(self):
         return ("PatientInfo id:% s hl7v2_id:% s birth_date:% s gender:% s ssn:% s first_name:% s middle_name:% s last_name:% s "
                 "address:% s address_2:% s city:% s country:% s post_code:% s country_code:% s age:% s creation_date:% s"
                 "conditions:% s observations:% s") % \
-                (self.id, self.hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
-                 self.address, self.address_2, self.city, self.country, self.post_code, self.country_code, self.age, self.creation_date, 
-                 self.conditions, self.observations)
-    
+            (self.id, self.hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name,
+             self.address, self.address_2, self.city, self.country, self.post_code, self.country_code, self.age, self.creation_date,
+             self.conditions, self.observations)
 
     def __str__(self):
         return ("From str method of PatientInfo: id is % s, hl7v2_id is % s, birth_date is % s, gender is % s, ssn is % s, "
                 "first_name is % s, middle_name is % s, last_name is % s, address is % s, address_2 is % s, city is % s, "
                 "country is % s, post_code is % s, country_code is % s, age is % s, creation_date is % s, conditions is % s, observations is % s") % \
-                (self.id, self.hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name, \
-                 self.address, self.address_2, self.city, self.country, self.post_code, self.country_code, self.age, self.creation_date, 
-                 self.conditions, self.observations)
+            (self.id, self.hl7v2_id, self.birth_date, self.gender, self.ssn, self.first_name, self.middle_name, self.last_name,
+             self.address, self.address_2, self.city, self.country, self.post_code, self.country_code, self.age, self.creation_date,
+             self.conditions, self.observations)
 
 
-class PatientCondition: 
+class PatientCondition:
     """A class which holds information about a patient condition. 
 
     Attributes: 
@@ -240,19 +243,20 @@ class PatientCondition:
     - subject_reference: ``String``
     - snomed_code: ``String``
     """
+
     def __init__(
         self,
-        condition, 
-        clinical_status, 
-        verification_status, 
-        onset_date_time, 
+        condition,
+        clinical_status,
+        verification_status,
+        onset_date_time,
         recorded_date,
         abatement_time,
         encounter_reference,
-        subject_reference, 
+        subject_reference,
         snomed_code
     ):
-        self.condition = condition 
+        self.condition = condition
         self.clinical_status = clinical_status
         self.verification_status = verification_status
         self.onset_date_time = onset_date_time
@@ -262,22 +266,21 @@ class PatientCondition:
         self.subject_reference = subject_reference
         self.snomed_code = snomed_code
 
-    def __repr__(self):  
+    def __repr__(self):
         return ("PatientCondition condition:% s clinical_status:% s verification_status:% s onset_date_time:% s "
                 "recorded_date:% s abatement_time:% s encounter_reference:% s subject_reference:% s snomed_code:% s") % \
-                (self.condition, self.clinical_status, self.verification_status, self.onset_date_time, self.recorded_date, \
-                 self.abatement_time, self.encounter_reference, self.subject_reference, self.snomed_code)
-    
+            (self.condition, self.clinical_status, self.verification_status, self.onset_date_time, self.recorded_date,
+             self.abatement_time, self.encounter_reference, self.subject_reference, self.snomed_code)
 
     def __str__(self):
         return ("From str method of PatientCondition: condition is % s, clinical_status is % s, verification_status is % s, "
                 "onset_date_time is % s, recorded_date is % s, abatement_time is % s, encounter_reference is % s, "
                 "subject_reference is % s, snomed_code is % s") % \
-                (self.condition, self.clinical_status, self.verification_status, self.onset_date_time, self.recorded_date, \
-                 self.abatement_time, self.encounter_reference, self.subject_reference, self.snomed_code)
+            (self.condition, self.clinical_status, self.verification_status, self.onset_date_time, self.recorded_date,
+             self.abatement_time, self.encounter_reference, self.subject_reference, self.snomed_code)
 
 
-class PatientObservation: 
+class PatientObservation:
     """A class which holds information regarding a patient observation. 
 
     Attributes: 
@@ -291,14 +294,15 @@ class PatientObservation:
     - encounter_reference: ``String``
     - subject_reference: ``String``
     - component: ``list[dict] | None``
-    
+
     """
+
     def __init__(
         self,
-        category, 
+        category,
         observation,
-        status,  
-        effective_date_time, 
+        status,
+        effective_date_time,
         issued,
         value_quantity,
         value_codeable_concept,
@@ -317,27 +321,27 @@ class PatientObservation:
         self.subject_reference = subject_reference
         self.component = component
 
-    def __repr__(self):  
+    def __repr__(self):
         return ("PatientObservation category:% s observation:% s status:% s effective_date_time:% s "
                 "issued:% s value_quantity:% s value_codeable_concept:% s encounter_reference:% s subject_reference:% s "
                 "component:% s") % \
-                (self.category, self.observation, self.status, self.effective_date_time, self.issued,
-                 self.value_quantity, self.value_codeable_concept, self.encounter_reference, self.subject_reference, 
-                 self.component)
-    
+            (self.category, self.observation, self.status, self.effective_date_time, self.issued,
+             self.value_quantity, self.value_codeable_concept, self.encounter_reference, self.subject_reference,
+             self.component)
 
     def __str__(self):
         return ("From str method of PatientObservation: category is % s, observation is % s, status is % s, "
                 "effective_date_time is % s, issued is % s, value_quantity is % s, value_codeable_concept is % s, "
                 "encounter_reference is % s, subject_reference is % s, component is % s") % \
-                (self.category, self.observation, self.status, self.effective_date_time, self.issued,
-                 self.value_quantity, self.value_codeable_concept, self.encounter_reference, self.subject_reference, 
-                 self.component)
+            (self.category, self.observation, self.status, self.effective_date_time, self.issued,
+             self.value_quantity, self.value_codeable_concept, self.encounter_reference, self.subject_reference,
+             self.component)
 
 
 # Calculate the age of the patient
 def calculate_age(birth_date):
     today = date.today()
+    today = datetime.date.today()
     age = (
         today.year
         - birth_date.year
@@ -345,20 +349,20 @@ def calculate_age(birth_date):
     )
     return age
 
-
-# Get random address from mockeroo API 
+# Get random address from mockeroo API
 def request_random_address():
     """Requests a random address from a mockeroo API.
 
     Will require error checks to ensure address is reachable and the API responds as expected. 
     """
-    response = requests.get("https://my.api.mockaroo.com/address.json?key=d995a340")
+    response = requests.get(
+        "https://my.api.mockaroo.com/address.json?key=d995a340")
 
     return response.json()
 
 
-# TODO update the dobs after the sample patients are created - 
-# if a request is for 365 patients between the age 10 and 11 then each patient 
+# TODO update the dobs after the sample patients are created -
+# if a request is for 365 patients between the age 10 and 11 then each patient
 # could be given a Day of birth that is incremented one day older than the previous for the whole year
 
 
@@ -379,13 +383,13 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
 
         if isinstance(resource, Patient):
             count += 1
-            #set the birth date to be the first day of the year using the year of the first patient
+            # set the birth date to be the first day of the year using the year of the first patient
             if count == 1:
                 birth_date = resource.birthDate
                 birth_date = birth_date.replace(month=1, day=1)
                 age = calculate_age(birth_date)
             else:
-                #use the previous patients birthdate to increment the next patients birthdate by one day
+                # use the previous patients birthdate to increment the next patients birthdate by one day
                 birth_date = birth_date + datetime.timedelta(days=1)
             ssn = None
             for identifier in resource.identifier:
@@ -403,7 +407,6 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
             hl7v2_id = []
             hl7v2_id.append(create_patient_id(db=db))
 
-
             # If true, reading from synthetic Fhir json generated using Synthea
             if require_address:
                 address_json = request_random_address()
@@ -413,9 +416,9 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
                 country = address_json["country"]
                 post_code = address_json["post_code"]
                 country_code = address_json["country_code"]
-            else: 
-                # Replace with appropriate location of info within UK patient in Fhir 
-                # For now, remains the same 
+            else:
+                # Replace with appropriate location of info within UK patient in Fhir
+                # For now, remains the same
                 address_json = request_random_address()
                 address = address_json["address"]
                 address_2 = address_json["address_2"]
@@ -432,15 +435,15 @@ def parse_fhir_message(db: firestore.client, fhir_message, require_address=True)
                 first_name=resource.name[0].given[0],
                 middle_name=middle_name,
                 last_name=resource.name[0].family,
-                address = address,
-                address_2 = address_2,
-                city = city,
-                country = country,
-                post_code = post_code,
-                country_code = country_code,
+                address=address,
+                address_2=address_2,
+                city=city,
+                country=country,
+                post_code=post_code,
+                country_code=country_code,
                 age=age,
                 creation_date=date.today(),
-                hl7v2_id=hl7v2_id
+                creation_date=datetime.date.today(),
             )
             # break  # Assuming there's only one patient resource per FHIR message
 
@@ -480,10 +483,10 @@ def parse_fhir_conditions(resource: Condition, patient_info: PatientInfo) -> Pat
         abatement_date_time = resource.abatementDateTime
 
     patient_condition = PatientCondition(condition=condition, clinical_status=clinical_status,
-                                            verification_status=verification_status, onset_date_time=onset_date_time, 
-                                            recorded_date=recorded_date, abatement_time=abatement_date_time, 
-                                            encounter_reference=encounter_reference, subject_reference=subject_reference, 
-                                            snomed_code=snomed_code)
+                                         verification_status=verification_status, onset_date_time=onset_date_time,
+                                         recorded_date=recorded_date, abatement_time=abatement_date_time,
+                                         encounter_reference=encounter_reference, subject_reference=subject_reference,
+                                         snomed_code=snomed_code)
     patient_info.conditions.append(patient_condition)
     return patient_info
 
@@ -499,7 +502,7 @@ def parse_fhir_observations(resource: Observation, patient_info: PatientInfo) ->
     - patient_info: ``PatientInfo``, with observations as a field 
     """
 
-    value_quantity = None 
+    value_quantity = None
     value_codeable_concept = None
     component_list = None
 
@@ -512,14 +515,15 @@ def parse_fhir_observations(resource: Observation, patient_info: PatientInfo) ->
     subject_reference = str(resource.subject.reference)
 
     if resource.valueQuantity:
-        value_quantity = str(resource.valueQuantity.value) + resource.valueQuantity.unit
+        value_quantity = str(resource.valueQuantity.value) + \
+            resource.valueQuantity.unit
 
     if resource.valueCodeableConcept:
         value_codeable_concept = resource.valueCodeableConcept.text
 
     if resource.component:
 
-        # Component list is an array of dicts, of the form: 
+        # Component list is an array of dicts, of the form:
         # - code_text: <survey question, test performed, ...>
         # - result   : <survey answer, test result, ...>
         component_list = []
@@ -534,26 +538,27 @@ def parse_fhir_observations(resource: Observation, patient_info: PatientInfo) ->
             # Assign result of component partition - survey answer, test result, ...
             component_result = None
             if component.valueQuantity:
-                component_result = str(component.valueQuantity.value) + component.valueQuantity.unit
+                component_result = str(
+                    component.valueQuantity.value) + component.valueQuantity.unit
             if component.valueCodeableConcept:
                 component_result = component.valueCodeableConcept.text
             if component.valueString:
                 component_result = component.valueString
 
-            # Add to dict 
+            # Add to dict
             component_dict["code_text"] = component_text
             component_dict["result"] = component_result
 
             # Add dict to component array
             component_list.append(component_dict)
 
-    patient_observation = PatientObservation(category=category, observation=observation, status=status, 
-                                                effective_date_time=effective_date_time, issued=issued, 
-                                                value_quantity=value_quantity, 
-                                                value_codeable_concept=value_codeable_concept, 
-                                                encounter_reference=encounter_reference, 
-                                                subject_reference=subject_reference, 
-                                                component=component_list)
+    patient_observation = PatientObservation(category=category, observation=observation, status=status,
+                                             effective_date_time=effective_date_time, issued=issued,
+                                             value_quantity=value_quantity,
+                                             value_codeable_concept=value_codeable_concept,
+                                             encounter_reference=encounter_reference,
+                                             subject_reference=subject_reference,
+                                             component=component_list)
     patient_info.observations.append(patient_observation)
     return patient_info
 
@@ -568,25 +573,26 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
     Returns:
     - patient_info: ``PatientInfo``, a class which holds all patient information 
     within the Firestore document
-    
+
     """
-    # Handle middle name 
+    # Handle middle name
     middle_name = None
-    if ("middle_name" in doc._data): middle_name = doc._data["middle_name"] 
+    if ("middle_name" in doc._data):
+        middle_name = doc._data["middle_name"]
 
     # Handle creation date - if patient doesn't have one, then assign today's date
-    if ("creation_date" in doc._data): 
+    if ("creation_date" in doc._data):
         creation_date = doc._data["creation_date"]
-    else: 
+    else:
         creation_date = date.today().isoformat()
-
-    # Handle possible missing hl7v2_id 
+        creation_date = datetime.date.today().isoformat()
+    # Handle possible missing hl7v2_id
     if ("hl7v2_id" in doc._data):
         hl7v2_id = doc._data["hl7v2_id"]
     else:
         hl7v2_id = create_patient_id(db=db)
 
-    # Create patient_info object for further use 
+    # Create patient_info object for further use
     patient_info = PatientInfo(
         id=doc._data["id"],
         hl7v2_id=hl7v2_id,
@@ -608,38 +614,38 @@ def firestore_doc_to_patient_info(db: firestore.client, doc: document) -> Patien
 
     if ("conditions" in doc._data):
         for condition in doc._data["conditions"]:
-            pat_condition=condition["condition"]
-            clinical_status=condition["clinical_status"]
-            verification_status=condition["verification_status"]
-            onset_date_time=condition["onset_date_time"]
-            recorded_date=condition["recorded_date"]
-            abatement_time=condition["abatement_time"]
-            encounter_reference=condition["encounter_reference"]
-            subject_reference=condition["subject_reference"]
-            snomed_code=condition["snomed_code"]
+            pat_condition = condition["condition"]
+            clinical_status = condition["clinical_status"]
+            verification_status = condition["verification_status"]
+            onset_date_time = condition["onset_date_time"]
+            recorded_date = condition["recorded_date"]
+            abatement_time = condition["abatement_time"]
+            encounter_reference = condition["encounter_reference"]
+            subject_reference = condition["subject_reference"]
+            snomed_code = condition["snomed_code"]
 
-            condition_record = PatientCondition(condition=pat_condition, clinical_status=clinical_status, 
-                                                verification_status=verification_status, onset_date_time=onset_date_time, 
-                                                recorded_date=recorded_date, abatement_time=abatement_time, 
-                                                encounter_reference=encounter_reference, subject_reference=subject_reference, 
+            condition_record = PatientCondition(condition=pat_condition, clinical_status=clinical_status,
+                                                verification_status=verification_status, onset_date_time=onset_date_time,
+                                                recorded_date=recorded_date, abatement_time=abatement_time,
+                                                encounter_reference=encounter_reference, subject_reference=subject_reference,
                                                 snomed_code=snomed_code)
-            
+
             patient_info.conditions.append(condition_record)
 
     if ("observations" in doc._data):
         for observation in doc._data["observations"]:
             new_observation = PatientObservation(
-                                    category=observation["category"],
-                                    observation=observation["observation"],
-                                    status=observation["status"],
-                                    effective_date_time=observation["effective_date_time"],
-                                    issued=observation["issued"],
-                                    value_quantity=observation["value_quantity"],
-                                    value_codeable_concept=observation["value_codeable_concept"],
-                                    encounter_reference=observation["encounter_reference"],
-                                    subject_reference=observation["subject_reference"],
-                                    component=observation["component"]
-                                )
+                category=observation["category"],
+                observation=observation["observation"],
+                status=observation["status"],
+                effective_date_time=observation["effective_date_time"],
+                issued=observation["issued"],
+                value_quantity=observation["value_quantity"],
+                value_codeable_concept=observation["value_codeable_concept"],
+                encounter_reference=observation["encounter_reference"],
+                subject_reference=observation["subject_reference"],
+                component=observation["component"]
+            )
             patient_info.observations.append(new_observation)
 
     return patient_info
@@ -649,7 +655,7 @@ def parse_HL7_message(msg):
     """
     A rudimentary function, still under development, which looks to return a parsed hl7 object, as well as 
     to retrieve patient info from a HL7 message if a PID field is present. 
-    
+
     Arguments: 
     - msg: str, the HL7 message from which patient information should be taken. 
 
@@ -657,7 +663,7 @@ def parse_HL7_message(msg):
     - hl7: a parsed hl7 object containing the information from msg
     - patient_info: PatientInfo, an object containing patient information retrieved from an HL7 message. 
     """
-    
+
     hl7 = parse_message(msg.replace('\n', '\r'), find_groups=True)
     patient_info = None
 
@@ -666,13 +672,14 @@ def parse_HL7_message(msg):
 
     # Empty list if no PID
     if (hl7.pid):
-        try: 
+        try:
             patient_id = hl7.pid.pid_3.to_er7()
             print("Got patient id")
 
             birth_date = hl7.pid.pid_7.to_er7()
             # Turn into date object
-            birth_date=datetime.datetime.strptime(birth_date, "%Y%m%d").date()
+            birth_date = datetime.datetime.strptime(
+                birth_date, "%Y%m%d").date()
 
             print("Got patient DOB")
 
@@ -687,7 +694,7 @@ def parse_HL7_message(msg):
             middle_name = hl7.pid.pid_5.pid_5_3.to_er7()
 
             print("Got patient names")
-            
+
             city = hl7.pid.pid_11.pid_11_3.to_er7()
             state = hl7.pid.pid_11.pid_11_4.to_er7()
             postal_code = hl7.pid.pid_11.pid_11_5.to_er7()
@@ -697,28 +704,28 @@ def parse_HL7_message(msg):
 
             age = calculate_age(birth_date=birth_date)
             creation_date = date.today()
-
+            creation_date = datetime.date.today()
             print("Got patient age & creation date")
 
-            patient_info = PatientInfo(id=patient_id, birth_date=birth_date, gender=gender, ssn=ssn, first_name=first_name, 
-                                    middle_name=middle_name, last_name=last_name, city=city, state=state, country=country, 
-                                    postal_code=postal_code, age=age, creation_date=creation_date)
+            patient_info = PatientInfo(id=patient_id, birth_date=birth_date, gender=gender, ssn=ssn, first_name=first_name,
+                                       middle_name=middle_name, last_name=last_name, city=city, state=state, country=country,
+                                       postal_code=postal_code, age=age, creation_date=creation_date)
 
-        except Exception as e: 
+        except Exception as e:
             print("Error encountered while attempting to retrieve patient info from PID.")
             print(str(e))
 
     return hl7, patient_info
 
 
-def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]: 
+def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: int, upper: int, peter_pan: bool) -> list[PatientInfo]:
     """
     Pull patient information from Firestorm, given an age range. If not enough patients exist in the firestore, 
     they will be generated using poll_synthea and the HL7 processor. 
 
     If peter_pan is set to true, patients will have their DOBs changed to match their age at time of creation.
     If false, their age will be updated using their DOB. 
-    
+
     Returns a list of patients.
     """
 
@@ -733,28 +740,31 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
 
             docs = query.limit(num_of_patients).stream()
 
-            # Stream the patient docs 
+            # Stream the patient docs
             for doc in docs:
                 patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
 
                 # Matches age with dob - method for doing so depends on the peter_pan bool
                 if peter_pan:
-                    patient_info = update_retrieved_patient_dob(patient_info=patient_info)
-                else: 
-                    patient_info = update_retrieved_patient_age(patient_info=patient_info)
+                    patient_info = update_retrieved_patient_dob(
+                        patient_info=patient_info)
+                else:
+                    patient_info = update_retrieved_patient_age(
+                        patient_info=patient_info)
 
                 patients.append(patient_info)
 
-            # Return a list of patients     
+            # Return a list of patients
             return patients
-        
-        else: 
-            print(f"Database only has {count} matching patient(s) - generating new patients...")
+
+        else:
+            print(
+                f"Database only has {count} matching patient(s) - generating new patients...")
 
             info = {
                 "number_of_patients": int(num_of_patients - count),
-                "age_from": lower, 
-                "age_to": upper, 
+                "age_from": lower,
+                "age_to": upper,
                 "sex": "F"
             }
 
@@ -764,42 +774,44 @@ def get_firestore_age_range(db: firestore.client, num_of_patients: int, lower: i
             # Iterate through FHIR JSON files in the work folder
             for file in work_folder_path.glob("*.json"):
                 if file.name not in uploaded_patients:
-                    try: 
+                    try:
                         with open(file, "r") as f:
                             fhir_message = f.read()
 
-                            # Parse patient information from file 
+                            # Parse patient information from file
                             patient_info = parse_fhir_message(fhir_message)
                             save_to_firestore(db=db, patient_info=patient_info)
                             uploaded_patients.append(file.name)
-                            
+
                     except UnicodeDecodeError as e:
                         print("Problem reading file...")
                         print(e)
-                    except Exception as e: 
-                        print("Couldn't parse patient information from fhir message...")
+                    except Exception as e:
+                        print(
+                            "Couldn't parse patient information from fhir message...")
                         time.sleep(3)
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
     """Uses the patient's creation date to calculate their new date of birth. 
-    
+
     This function is called if patients are retrieved with the 'peter_pan' bool 
     set to true. 
     """
 
     current_date = date.today()
-    creation_date = patient_info.creation_date
+    current_date = datetime.date.today()
     birth_date = patient_info.birth_date
 
-    # Find days passed since creation date 
+    # Find days passed since creation date
     years_passed = (current_date.year - creation_date.year)
 
     # We only change their birth year, as most patients' DOB will be 01/01/...
-    if (years_passed > 0): 
+    if (years_passed > 0):
 
         # Add the number of years passed
-        new_birth_date = birth_date.replace(year=(birth_date.year + years_passed))
+        new_birth_date = birth_date.replace(
+            year=(birth_date.year + years_passed))
 
         patient_info.birth_date = new_birth_date
 
@@ -816,7 +828,7 @@ def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
 
 def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
     """Changes the patient's age to match their date of birth.
-    
+
     This function is called if patients are retrieved with the 'peter_pan' bool 
     set to false. 
     """
@@ -828,16 +840,18 @@ def update_retrieved_patient_age(patient_info: PatientInfo) -> PatientInfo:
 
 def assign_age_to_patient(patient_info: PatientInfo, desired_age: int, index: int | None) -> PatientInfo:
     """Changes the patient's date of birth and age to the desired age
-    
+
     Optional arg - index: int, which indicates the position of the patient in the array looped through
     """
 
     # Sets year of birth to appropriate year; day and month are both '01' to simplify references
 
-    new_birth_date = date.today().replace(year=(date.today().year - desired_age), month=1, day=1)
-
-    # Increment the new_birth_date for each patient iteration in the list  
-    if index: new_birth_date = new_birth_date + datetime.timedelta(days=index)
+    new_birth_date = date.today().replace(
+    new_birth_date = datetime.date.today().replace(
+        year=(datetime.date.today().year - desired_age), month=1, day=1)
+    # Increment the new_birth_date for each patient iteration in the list
+    if index:
+        new_birth_date = new_birth_date + datetime.timedelta(days=index)
 
     patient_info.birth_date = new_birth_date
     patient_info.age = desired_age
@@ -851,12 +865,12 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
     Returns both the count of the patients in the db, and the query used in the check. 
     """
 
-    # Form the query based on peter_pan bool 
+    # Form the query based on peter_pan bool
     if peter_pan:
 
         # We can simply collect patients using 'age', as will be changing their dob to match
         query = db.collection("full_fhir").where(filter=FieldFilter("age", "<=", upper))\
-                                            .where(filter=FieldFilter("age", ">=", lower))
+            .where(filter=FieldFilter("age", ">=", lower))
     else:
 
         # We need to calculate the appropriate dob ranges; we can't search by age as we will change this
@@ -866,13 +880,13 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
         lower_year = current_date.year - lower
         upper_dob = current_date.replace(year=lower_year)
 
-        upper_year = current_date.year - upper 
+        upper_year = current_date.year - upper
         lower_dob = current_date.replace(year=upper_year)
 
         # Find all records between the two valid DOBs
         query = db.collection("full_fhir").where(filter=FieldFilter("birth_date", "<=", upper_dob.isoformat()))\
-                                            .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
-    
+            .where(filter=FieldFilter("birth_date", ">=", lower_dob.isoformat()))
+
     aggregate_query = aggregation.AggregationQuery(query)
 
     # `alias` to provides a key for accessing the aggregate query results
@@ -886,60 +900,59 @@ def count_patient_records(db: firestore.client, lower: int, upper: int, peter_pa
 
 
 def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
-        """Save patient info to Firestore if the patient does not already exist 
-        in the database - this is checked using their ID. 
-        
-        Args: 
-        - db: ``firestore.client``, an initialised firestore client
-        - patient_info: ``PatientInfo``, a PatientInfo object
+    """Save patient info to Firestore if the patient does not already exist 
+    in the database - this is checked using their ID. 
 
-        Returns: 
-        - ``None``
-        """
+    Args: 
+    - db: ``firestore.client``, an initialised firestore client
+    - patient_info: ``PatientInfo``, a PatientInfo object
 
-        try: 
-            patient_id = patient_info.id
-            patient_ref = db.collection("full_fhir").document(patient_id)
-            if patient_ref.get().exists:
-                print(
-                    f"Patient with ID {patient_id} already exists in Firestore. Skipping."
-                )
-            else:
+    Returns: 
+    - ``None``
+    """
 
-                patient_data = {
-                    "id": patient_info.id,
-                    "hl7v2_id": create_patient_id(db=db),
-                    "birth_date": patient_info.birth_date.isoformat(),
-                    "gender": patient_info.gender,
-                    "ssn":patient_info.ssn,
-                    "first_name": patient_info.first_name,
-                    "middle_name": patient_info.middle_name,
-                    "last_name": patient_info.last_name,
-                    "address": patient_info.address,
-                    "address_2": patient_info.address_2,
-                    "city": patient_info.city,
-                    "country": patient_info.country,
-                    "post_code": patient_info.post_code,
-                    "country_code": patient_info.country_code,
-                    "age":patient_info.age,
-                    "creation_date":patient_info.creation_date.isoformat(),
-                }
+    try:
+        patient_id = patient_info.id
+        patient_ref = db.collection("full_fhir").document(patient_id)
+        if patient_ref.get().exists:
+            print(
+                f"Patient with ID {patient_id} already exists in Firestore. Skipping."
+            )
+        else:
 
-                if hasattr(patient_info, 'conditions'):
-                    conditions = []
-                    for condition in patient_info.conditions:
-                        conditions.append(condition.__dict__)
-                    patient_data["conditions"] = conditions
+            patient_data = {
+                "id": patient_info.id,
+                "hl7v2_id": create_patient_id(db=db),
+                "birth_date": patient_info.birth_date.isoformat(),
+                "gender": patient_info.gender,
+                "ssn": patient_info.ssn,
+                "first_name": patient_info.first_name,
+                "middle_name": patient_info.middle_name,
+                "last_name": patient_info.last_name,
+                "address": patient_info.address,
+                "address_2": patient_info.address_2,
+                "city": patient_info.city,
+                "country": patient_info.country,
+                "post_code": patient_info.post_code,
+                "country_code": patient_info.country_code,
+                "age": patient_info.age,
+                "creation_date": patient_info.creation_date.isoformat(),
+            }
 
-                if hasattr(patient_info, 'observations'):
-                    observations = []
-                    for observation in patient_info.observations:
-                        observations.append(observation.__dict__)
-                    patient_data["observations"] = observations
+            if hasattr(patient_info, 'conditions'):
+                conditions = []
+                for condition in patient_info.conditions:
+                    conditions.append(condition.__dict__)
+                patient_data["conditions"] = conditions
 
-                patient_ref.set(patient_data)
-                print(f"Added patient with ID {patient_id} to Firestore.")
+            if hasattr(patient_info, 'observations'):
+                observations = []
+                for observation in patient_info.observations:
+                    observations.append(observation.__dict__)
+                patient_data["observations"] = observations
 
-        except Exception as e:
-            print('Failed to upload to Firestore: %s', repr(e)) 
+            patient_ref.set(patient_data)
+            print(f"Added patient with ID {patient_id} to Firestore.")
 
+    except Exception as e:
+        print('Failed to upload to Firestore: %s', repr(e))
