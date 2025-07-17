@@ -3,6 +3,7 @@ Dummy Patient data
 
 This is a simple FHIR patient/ HL7 v2 generation tool that works with the Synthea Project https://github.com/synthetichealth/synthea
 
+
 ## running the whole script
 
 To run the script, you will need to add the synthea.jar file to the project root and install Java JDK 11 or above on your local machine
@@ -33,6 +34,9 @@ postal_code: String
 age: Integer
 
 You will need to create a 'firebase' folder in the project root and update the code to name the credentials .json file accordingly.
+
+you will need the jar file from here
+https://github.com/synthetichealth/synthea/wiki/Basic-Setup-and-Running
 
 # Alternative
 You can run the poll_synthea alone by running - python3 poll_synthea.call_for_patients()
