@@ -154,71 +154,38 @@ class HL7MessageProcessor:
             for file in work_folder_path.glob("*.json"):
                 with open(file, "r") as f:
                     fhir_message = f.read()
-
-                    # At this point, patient_info has creation_date
-                    patient_info = parse_fhir_message(fhir_message)
-                    if patient_info:
-
-                        # Writing hl7 message to file
-                        if self.messageType == "ADT_A01":
-                            hl7_message = create_adt_message(
-                                patient_info, self.messageType)
-                        elif self.messageType == "ORM_O01":
-                            hl7_message = create_orm_message(
-                                patient_info, self.messageType)
-                        elif self.messageType == "ORU_R01":
-                            hl7_message = create_oru_message(
-                                patient_info, self.messageType)
-                        print("Generated HL7 message:", str(hl7_message))
-                        self.save_hl7_message_to_file(
-                            hl7_message, patient_info.id)
-
-                        # Saving to firestore
-                        patient_id = patient_info.id
-                        patient_ref = self.db.collection(
-                            "full_fhir").document(patient_id)
-                        # Check if patient already exists
-                        if patient_ref.get().exists:
-                            print(
-                                f"Patient with ID {patient_id} already exists "
-                                " in Firestore. Skipping."
-                            )
-                        else:
-                            # Add patient to Firestore
-                            patient_data = {
-                                "id": patient_info.id,
-                                "birth_date": (
-                                    patient_info.birth_date.isoformat()
-                                ),
-                                "gender": patient_info.gender,
-                                "ssn": patient_info.ssn,
-                                "first_name": patient_info.first_name,
-                                "last_name": patient_info.last_name,
-                                "city": patient_info.city,
-                                "state": patient_info.state,
-                                "country": patient_info.country,
-                                "postal_code": patient_info.postal_code,
-                                "age": patient_info.age,
-                                "creation_date": (
-                                    patient_info.creation_date.isoformat()
-                                ),
-                            }
-                            patient_ref.set(patient_data)
-                            print(
-                                f"Added patient with ID {patient_id} "
-                                "to Firestore."
-                            )
-
-                    else:
-                        print("no patient info")
         except Exception as e:
-            logging.error(
-                (
-                    f"An error of type {type(e).__name__} occurred. "
-                    f"Arguments:\n{e.args}"
-                )
-            )
+            logging.error(f"Error reading FHIR JSON files: {e}")
             logging.error(traceback.format_exc())
+
+            # At this point, parse the FHIR message and process it
+            try:
+                patient_info = parse_fhir_message(fhir_message)
+                hl7_message = None
+                if self.messageType == "ADT_A01":
+                    hl7_message = create_adt_message(
+                        patient_info, self.messageType
+                    )
+                elif self.messageType == "ORM_O01":
+                    hl7_message = create_orm_message(
+                        patient_info, self.messageType
+                    )
+                elif self.messageType == "ORU_R01":
+                    hl7_message = create_oru_message(
+                        patient_info, self.messageType
+                    )
+                if hl7_message:
+                    self.save_hl7_message_to_file(hl7_message, patient_info.id)
+                    # Optionally, upload patient info to Firestore
+                    # self.db.collection("patients").document(patient_info.id).set(patient_info.__dict__)
+            except Exception as e:
+                logging.error(
+                    (
+                        f"An error of type {type(e).__name__} occurred. "
+                        f"Arguments:\n{e.args}"
+                    )
+                )
+                logging.error(traceback.format_exc())
 
     def save_hl7_message_to_file(self, hl7_message, patient_id):
         hl7_file_path = self.hl7_folder_path / f"{patient_id}.hl7"

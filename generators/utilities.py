@@ -503,7 +503,7 @@ def request_random_address():
 
 # Parses a FHIR JSON message and returns a PatientInfo object
 def parse_fhir_message(
-        db: firestore.client, fhir_message, require_address=True):
+    db: firestore.client, fhir_message, require_address=True):
     # Parse the FHIR JSON message into a Bundle
     bundle = Bundle.model_validate_json(fhir_message)
 
@@ -598,7 +598,8 @@ def parse_fhir_message(
 
 def parse_fhir_conditions(
         resource: Condition, patient_info: PatientInfo) -> PatientInfo:
-    """Attempts to extract patient conditions from a fhir bundle.
+    """
+    Attempts to extract patient conditions from a fhir bundle.
 
     Args:
     - resource: ``Condition``, parsed from raw fhir message
