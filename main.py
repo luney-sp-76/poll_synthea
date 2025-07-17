@@ -15,7 +15,8 @@ from generators.utilities import (
     get_firestore_age_range,
     parse_fhir_message,
     PatientInfo,
-    assign_age_to_patient)
+    assign_age_to_patient
+)
 from hl7apy import core
 from segments import (
     create_pid,
@@ -236,8 +237,8 @@ class HL7MessageProcessor:
 def initialize_firestore() -> firestore.client:
     global BASE_DIR
     """Initialize Firestore client and return it."""
-    json_file = Path("poll_synthea", "firebase",
-                     "pollsynthea-firebase-adminsdk-j01m1-f9a1592562.json")
+    json_file = Path(BASE_DIR, "firebase",
+                     "pollsynthea-firebase-adminsdk-j01m1-044b9f312b.json")
     if json_file:
         cred = credentials.Certificate(json_file)
         firebase_admin.initialize_app(cred)
