@@ -17,12 +17,14 @@ work_fhir_folder_path = BASE_DIR / "Work"
 metadata_folder_path = BASE_DIR / "output/metadata"
 
 
-def run_synthea(x,age, sex):
+def run_synthea(x, age, sex):
     # Command to run Synthea
     command = [
         "java",
         "-jar",
-        "synthea-with-dependencies.jar",  # Assuming the JAR is in the same directory
+        (
+            "synthea-with-dependencies.jar"
+        ),  # Assuming the JAR is in the same directory
         "-p",
         str(x),
         "-a",
@@ -114,23 +116,36 @@ def run_synthea(x,age, sex):
     print("files in Work  = ", work_count)
 
     if work_count < temp_count:
-        print("incomplete transfer missing ", temp_count - work_count, "files x")
+        print(
+            "incomplete transfer missing ",
+            temp_count - work_count,
+            "files x"
+        )
     else:
         if work_count > temp_count:
-            # Calculate the difference between the number of files in Work before and after this run
+            # Calculate the difference between
+            # the number of files in Work before and after this run
             new_files_added = work_count - existing_files_count
             print(new_files_added, " new files added to work ✓ ")
             if new_files_added > x:
-                print(new_files_added - x, " files extra than requested have been added")
+                print(
+                    new_files_added - x, " files extra than requested "
+                    "have been added")
             else:
                 if x > new_files_added:
-                    print(x - new_files_added, " files less than requested have been added")
+                    print(
+                        x - new_files_added, " files less than requested "
+                        "have been added")
 
     print("Done! ✓ ")
 
 
-'''Check the validity of the users patient number request to be 
-numeric digit and non-alphabetical and not a negative number'''
+'''
+Check the validity of the users patient number request to be
+numeric digit and non-alphabetical and not a negative number
+'''
+
+
 def get_valid_positive_integer_input():
     while True:
         user_input = input("Enter the amount of patients to create:")
@@ -142,9 +157,15 @@ def get_valid_positive_integer_input():
                 if 0 <= check_number <= 60000:
                     return check_number
                 else:
-                    print("Please enter a non-negative number or a number no greater than 60000.")
+                    print(
+                        "Please enter a non-negative number or a number "
+                        "no greater than 60000."
+                        )
             except ValueError:
-                print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
+                print(
+                    f"'{user_input}' is not a valid numeric value. "
+                    "Please enter a valid number."
+                    )
 
 
 def check_number(num):
@@ -153,30 +174,51 @@ def check_number(num):
         False
         return check_number
     else:
-        print("Please enter a non-negative number or a number no greater than 100.")
+        print(
+            "Please enter a non-negative number "
+            " or a number no greater than 100."
+            )
 
 
-'''define the age of patients to be created and check the validity of the users input to be'''
+'''
+define the age of patients to be created
+and check the validity of the users input to be
+'''
+
+
 def get_valid_lower_positive_integer_input():
     user_input = input("Enter the lower age of patients to create:")
     try:
         number: int = int(user_input)
         return number
-    except ValueError: 
-        print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
+    except ValueError:
+        print(
+            f"'{user_input}' is not a valid numeric value. "
+            " Please enter a valid number."
+            )
+
+    '''
+    define the age of patients to be created
+    and check the validity of the users input
+    '''
 
 
-'''define the age of patients to be created and check the validity of the users input'''
 def get_valid_upper_positive_integer_input():
     user_input = input("Enter the upper age of patients to create:")
     try:
         number: int = int(user_input)
         return number
-    except ValueError: 
-        print(f"'{user_input}' is not a valid numeric value. Please enter a valid number.")
+    except ValueError:
+        print(
+            f"'{user_input}' is not a valid numeric value. "
+            "Please enter a valid number.")
 
 
-'''define the sex of patients to be created and check the validity of the users input to be'''
+'''
+define the sex of patients to be created and
+check the validity of the users input to be'''
+
+
 def get_valid_sex_input():
     while True:
         user_input = input("Enter the Sex of patients to create:")
@@ -184,11 +226,11 @@ def get_valid_sex_input():
             return user_input.upper()
         else:
             print("Please enter M or F")
-        
+
 
 def call_for_patients(info=None):
     """
-    Generates a number of patients of a certain sex within an age range 
+    Generates a number of patients of a certain sex within an age range
 
     Optional args: info: dict{number_of_patients, age_from, age_to, sex}
     """
@@ -197,19 +239,17 @@ def call_for_patients(info=None):
         number_of_patients = info["number_of_patients"]
         age_from = info["age_from"]
         age_to = info["age_to"]
-        age = f"{age_from}-{age_to}" 
+        age = f"{age_from}-{age_to}"
         sex = info["sex"]
     else:
         number_of_patients = get_valid_positive_integer_input()
         age_from = get_valid_lower_positive_integer_input()
         age_to = get_valid_upper_positive_integer_input()
-        age = f"{age_from}-{age_to}" 
+        age = f"{age_from}-{age_to}"
         sex = get_valid_sex_input()
-
 
     print(age)
     print(sex)
     run_synthea(number_of_patients, age, sex)
-
 
 # call_for_patients()
