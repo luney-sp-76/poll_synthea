@@ -187,7 +187,7 @@ and check the validity of the users input to be
 
 
 def get_valid_lower_positive_integer_input():
-    user_input = input("Enter the lower age of patients to create:")
+    user_input = input("Enter the lower age of patients to create: ")
     try:
         number: int = int(user_input)
         return number

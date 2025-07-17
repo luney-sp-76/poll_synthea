@@ -18,14 +18,12 @@ from generators.utilities import (
     assign_age_to_patient
 )
 from hl7apy import core
-from segments import (
-    create_pid,
-    create_obr,
-    create_orc,
-    create_msh,
-    create_evn,
-    create_pv1,
-)
+from segments.create_pid import create_pid
+from segments.create_obr import create_obr
+from segments.create_orc import create_orc
+from segments.create_msh import create_msh
+from segments.create_evn import create_evn
+from segments.create_pv1 import create_pv1
 # from pathlib import Path
 
 BASE_DIR = Path.cwd()
@@ -160,6 +158,10 @@ class HL7MessageProcessor:
 
             # At this point, parse the FHIR message and process it
             try:
+                if fhir_message is None:
+                    raise ValueError(
+                        "FHIR message is None. Check the file path."
+                    )
                 patient_info = parse_fhir_message(fhir_message)
                 hl7_message = None
                 if self.messageType == "ADT_A01":
@@ -302,5 +304,9 @@ if __name__ == "__main__":
 
     # Create an instance of HL7MessageProcessor and call its 'main' method
     hl7_folder = hl7_folder_path  # Make sure this path is correct
+    logging.info(f"HL7 folder path: {hl7_folder}")
+    if not hl7_folder.exists():
+        hl7_folder.mkdir(parents=True, exist_ok=True)
+        logging.info(f"Created HL7 folder at: {hl7_folder}")
     processor = HL7MessageProcessor(hl7_folder)
     processor.main()

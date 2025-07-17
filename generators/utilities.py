@@ -503,7 +503,10 @@ def request_random_address():
 
 # Parses a FHIR JSON message and returns a PatientInfo object
 def parse_fhir_message(
-    db: firestore.client, fhir_message, require_address=True):
+        db: firestore.client,
+        fhir_message,
+        require_address=True
+):
     # Parse the FHIR JSON message into a Bundle
     bundle = Bundle.model_validate_json(fhir_message)
 
