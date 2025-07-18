@@ -180,7 +180,8 @@ class HL7MessageProcessor:
                     json.loads(fhir_content)
                     fhir_messages.append(fhir_content)
                 except json.JSONDecodeError:
-                    # If single JSON parsing fails, try to split by lines/objects
+                    # If single JSON parsing fails,
+                    # try to split by lines/objects
                     # This handles NDJSON format (newline-delimited JSON)
                     lines = fhir_content.strip().split('\n')
                     for line in lines:
@@ -191,15 +192,23 @@ class HL7MessageProcessor:
                                 fhir_messages.append(line)
                             except json.JSONDecodeError:
                                 logging.warning(
-                                    f"Skipping invalid JSON line in {file.name}: {line[:100]}...")
+                                        (
+                                            "Skipping invalid JSON line in "
+                                            "f{file.name}:"
+                                            f" {line[:100]}..."
+                                        )
+                                )
 
                 # Process each FHIR message
                 for i, fhir_message in enumerate(fhir_messages):
                     try:
                         if not fhir_message or fhir_message.isspace():
                             logging.warning(
-                                f"Empty FHIR message in {file.name}, message {i+1}")
-                            continue
+                                (
+                                    f"Empty FHIR message in {file.name}, "
+                                    f"message {i+1}"
+                                )
+                            )
 
                         # Fix: Pass the required parameters
                         # to parse_fhir_message
@@ -226,23 +235,31 @@ class HL7MessageProcessor:
                             else:
                                 filename_suffix = ""
 
-                            patient_id_with_suffix = f"{patient_info.id}{filename_suffix}"
+                            patient_id_with_suffix = (
+                                f"{patient_info.id}{filename_suffix}"
+                            )
                             self.save_hl7_message_to_file(
                                 hl7_message, patient_id_with_suffix)
                             processed_count += 1
                             print(
-                                f"Successfully created HL7 message for patient: {patient_id_with_suffix}")
+                                "Successfully created HL7 message "
+                                f"for patient: {patient_id_with_suffix}")
 
                             # Optionally, upload patient info to Firestore
                             # self.db.collection("patients").document(patient_info.id).set(patient_info.__dict__)
                         else:
                             logging.error(
-                                f"Failed to create HL7 message for patient in {file.name}, message {i+1}")
+                                (
+                                    "Failed to create HL7 message for patient "
+                                    f"in {file.name}, message {i+1}"
+                                )
+                            )
                             error_count += 1
 
                     except Exception as e:
                         logging.error(
-                            f"Error processing FHIR message {i+1} in {file.name}: {e}")
+                            f"Error processing FHIR message {i+1} "
+                            f"in {file.name}: {e}")
                         logging.error(traceback.format_exc())
                         error_count += 1
 
@@ -367,7 +384,8 @@ def produce_OML_O21_from_firestore(
 
 
 def test_mockaroo_connection():
-    """Test connection to Mockaroo API for address data WITHOUT SSL verification"""
+    """Test connection to Mockaroo API for
+    address data WITHOUT SSL verification"""
     try:
         # Skip SSL certificate verification entirely
         response = requests.get(
@@ -376,7 +394,9 @@ def test_mockaroo_connection():
             timeout=30
         )
         response.raise_for_status()
-        logging.info(f"Mockaroo API test successful (no SSL verification): {response.status_code}")
+        logging.info(
+            "Mockaroo API test successful (no SSL verification): "
+            f"{response.status_code}")
         print(f"Mockaroo API test successful: {response.status_code}")
         return response.json()
     except Exception as error:
@@ -385,19 +405,127 @@ def test_mockaroo_connection():
         return None
 
 
+# In main.py - handle all patient generation logic here
+def ensure_patients_exist(db, num_of_patients, lower, upper, peter_pan):
+    """Ensure enough patients exist in Firestore, generating if needed"""
+    patients, current_count = get_firestore_age_range(
+        db,
+        num_of_patients,
+        lower,
+        upper,
+        peter_pan
+    )
+
+    if current_count < num_of_patients:
+        needed = num_of_patients - current_count
+        print(f"Generating {needed} additional patients...")
+
+        info = {
+            "number_of_patients": needed,
+            "age_from": lower,
+            "age_to": upper,
+            "sex": "F"
+        }
+
+        poll_synthea.call_for_patients(info=info)
+
+        # Process generated files and save to Firestore
+        process_generated_fhir_files(db)
+
+        # Get patients again
+        patients, _ = get_firestore_age_range(
+            db,
+            num_of_patients,
+            lower,
+            upper,
+            peter_pan
+        )
+
+    return patients
+
+
+def process_generated_fhir_files(db):
+    """Process FHIR files and save to Firestore"""
+    for file in work_folder_path.glob("*.json"):
+        try:
+            with open(file, "r") as f:
+                fhir_message = f.read()
+                patient_info = parse_fhir_message(db, fhir_message)
+                save_to_firestore(db=db, patient_info=patient_info)
+        except Exception as e:
+            logging.error(f"Error processing {file.name}: {e}")
+
+
+def save_to_firestore(db, patient_info):
+    """Save patient_info to Firestore using full_fhir collection"""
+    try:
+        # Use consistent field names and collection
+        patient_data = {
+            "id": patient_info.id,
+            "hl7v2_id": (
+                [patient_info.hl7v2_id]
+                if patient_info.hl7v2_id else []
+            ),  # Array format
+            "birth_date":
+                patient_info.birth_date.isoformat()
+                if hasattr(patient_info.birth_date, 'isoformat')
+                else str(patient_info.birth_date),
+            "gender": patient_info.gender,
+            "ssn": patient_info.ssn,
+            "first_name": patient_info.first_name,
+            "middle_name": patient_info.middle_name,
+            "last_name": patient_info.last_name,
+            "address": patient_info.address,
+            "address_2": patient_info.address_2,
+            "city": patient_info.city,
+            "state": getattr(patient_info, 'state', 'UK'),
+            "country": patient_info.country,
+            "post_code": patient_info.post_code,
+            "country_code": patient_info.country_code,
+            "age": patient_info.age,
+            "creation_date":
+                patient_info.creation_date.isoformat()
+                if hasattr(patient_info.creation_date, 'isoformat')
+                else str(patient_info.creation_date),
+        }
+
+        # Add conditions and observations arrays if they exist
+        if hasattr(patient_info, 'conditions') and patient_info.conditions:
+            patient_data["conditions"] = [
+                condition.__dict__ for condition in patient_info.conditions
+            ]
+
+        if hasattr(patient_info, 'observations') and patient_info.observations:
+            patient_data["observations"] = [
+                observation.__dict__
+                for observation in patient_info.observations
+            ]
+
+        # Use full_fhir collection
+        db.collection("full_fhir").document(patient_info.id).set(patient_data)
+        logging.info(
+            f"Saved patient {patient_info.id}"
+            " to Firestore (full_fhir collection)."
+        )
+
+    except Exception as e:
+        logging.error(
+            f"Failed to save patient {patient_info.id} to Firestore: {e}")
+
+
 if __name__ == "__main__":
     # Clear any existing log file and configure logging properly
     log_file = Path("main.log")
     if log_file.exists():
         log_file.unlink()
-    
+
     logging.basicConfig(
-        filename="main.log", 
+        filename="main.log",
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         filemode='w'
     )
-    
+
     try:
         import poll_synthea
         poll_synthea.call_for_patients()
@@ -408,7 +536,7 @@ if __name__ == "__main__":
         if not hl7_folder.exists():
             hl7_folder.mkdir(parents=True, exist_ok=True)
             logging.info(f"Created HL7 folder at: {hl7_folder}")
-        
+
         processor = HL7MessageProcessor(hl7_folder)
         if processor.db is None:
             processor.db = initialize_firestore()
@@ -416,15 +544,16 @@ if __name__ == "__main__":
 
         # Test Mockaroo connection without SSL verification
         print("Testing Mockaroo API connection (no SSL verification)...")
-        logging.info("Testing Mockaroo API connection (no SSL verification)...")
+        logging.info(
+            "Testing Mockaroo API connection (no SSL verification)...")
         mockaroo_data = test_mockaroo_connection()
         if mockaroo_data:
             logging.info("Mockaroo API is accessible")
             print("Mockaroo API is accessible")
         else:
-            logging.warning("Mockaroo API is not accessible - continuing without it")
+            logging.warning(
+                "Mockaroo API is not accessible - continuing without it")
             print("Mockaroo API is not accessible - continuing without it")
-            
     except Exception as main_error:
         logging.error(f"Main execution failed: {main_error}")
         logging.error(traceback.format_exc())

@@ -17,10 +17,10 @@ def create_msh(messageType, control_id, hl7, current_date):
         messageTypeSegment = str(messageType)
         messageTypeSegment = messageTypeSegment.replace("_", "^")
 
-        hl7.msh.msh_3 = "SENDAPP"  # Sending Application
-        hl7.msh.msh_4 = "SENDFAC"  # Sending Facility
-        hl7.msh.msh_5 = "RECAPP"  # Receiving Application
-        hl7.msh.msh_6 = "RECFAC"  # Receiving Facility
+        hl7.msh.msh_3 = "TST"  # Sending Application
+        hl7.msh.msh_4 = "DOH"  # Sending Facility
+        hl7.msh.msh_5 = "CIM"  # Receiving Application
+        hl7.msh.msh_6 = "WINPATH"  # Receiving Facility
         hl7.msh.msh_7 = current_date.strftime(
             "%Y%m%d%H%M"
         )  # Date/Time of Message

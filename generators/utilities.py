@@ -4,7 +4,6 @@ import random
 import string
 import datetime
 from datetime import date
-import time
 from fhir.resources.R4B.bundle import Bundle
 from fhir.resources.R4B.patient import Patient
 from fhir.resources.R4B.condition import Condition
@@ -13,7 +12,6 @@ from firebase_admin import firestore
 from google.cloud.firestore_v1 import document
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1 import aggregation
-from poll_synthea import call_for_patients
 from hl7apy.parser import parse_message
 import requests
 import urllib3
@@ -25,10 +23,6 @@ hl7_folder_path = BASE_DIR / "HL7_v2"
 
 # Disable SSL verification warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Create a global session with SSL verification disabled
-_session = requests.Session()
-_session.verify = False
 
 
 # generate a random time for the OBR segment
@@ -122,19 +116,10 @@ def create_patient_id(db: firestore.client):
     """
     Generates an hl7v2_id for a new patient, given the highest id currently
     in the database.
-    Args:
-    - db: ``firestore.client``, the client for
-    interfacing with the firestore database
-
-    Returns:
-    - patient_id: ``String``, the fully-formed patient hl7v2_id.
-
-    To do:
-    - Catch edge cases such as no ID being returned by query
     """
     synthea_code = "SYN"
 
-    # Pull largest id from firebase
+    # Use full_fhir collection (correct collection name)
     db_ref = db.collection("full_fhir")
     query = (
         db_ref.order_by(
@@ -142,19 +127,31 @@ def create_patient_id(db: firestore.client):
     )
 
     results = query.stream()
+    greatest_id = None
     for result in results:
-        greatest_id = result._data["hl7v2_id"]
+        # Handle both array and string hl7v2_id formats
+        hl7v2_data = result._data.get("hl7v2_id")
+        if isinstance(hl7v2_data, dict):
+            # Handle the map format like in hl7_dict collection
+            greatest_id = hl7v2_data.get(
+                "max_hl7v2_id") or list(hl7v2_data.values())[0]
+        elif isinstance(hl7v2_data, list):
+            # Handle array format
+            greatest_id = hl7v2_data[0] if hl7v2_data else None
+        else:
+            # Handle string format
+            greatest_id = hl7v2_data
         break
 
-    greatest_id = greatest_id[3: 9]
-
-    # Increment previous patient id to new value
-    new_id = increment_patient_id(greatest_id)
+    if greatest_id:
+        greatest_id = greatest_id[3:9]  # Extract the numeric part
+        new_id = increment_patient_id(greatest_id)
+    else:
+        new_id = "000001"  # Default starting ID
 
     # Generate new hl7v2_id in full
     patient_id = f"{synthea_code + new_id}^^^PAS^MR"
 
-    # Return new hl7v2_id
     return patient_id
 
 
@@ -195,6 +192,7 @@ class PatientInfo:
         address,
         address_2,
         city,
+        state,  # Add this parameter
         country,
         post_code,
         country_code,
@@ -204,11 +202,12 @@ class PatientInfo:
     ):
         self.id = id
 
-        # Create id array and assign first id
+        # Create HL7v2_id if not provided
         if hl7v2_id:
             self.hl7v2_id = hl7v2_id
         else:
-            self.hl7v2_id: list[str] = []
+            # This will be set by the calling function
+            self.hl7v2_id = None
 
         self.birth_date = birth_date
         self.gender = gender
@@ -219,6 +218,7 @@ class PatientInfo:
         self.address = address
         self.address_2 = address_2
         self.city = city
+        self.state = state  # Add this attribute
         self.country = country
         self.post_code = post_code
         self.country_code = country_code
@@ -490,38 +490,58 @@ def calculate_age(birth_date):
 
 
 # Get random address from mockeroo API
+
+
 def request_random_address():
     """
     Requests a random address from the Mockaroo API
-    Returns a JSON object containing address information
+    Returns a JSON object with standardized field names
+      matching Firestore structure
     """
     try:
-        response = _session.get(
+        # Disable SSL verification for Mockaroo API
+        response = requests.get(
             "https://my.api.mockaroo.com/address.json?key=c5668b10",
+            verify=False,  # Disable SSL verification
             timeout=30
         )
         response.raise_for_status()
-        return response.json()
+        api_response = response.json()
+
+        # Map Mockaroo response to match your Firestore field structure
+        return {
+            "address": api_response.get("address", "123 Main St"),
+            "address_2": api_response.get("address_2", ""),
+            "city": api_response.get("city", "Anytown"),
+            "state": "UK",
+            "post_code": api_response.get("post_code", "02101"),
+            "country": api_response.get("country", "United Kingdom"),
+            "country_code": api_response.get("country_code", "GB")
+        }
+
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to get random address from Mockaroo: {e}")
-        # Return fallback address
+        # Return a fallback address structure
         return {
             "address": "123 Main St",
-            "address_2": "Apt 4B",
+            "address_2": "",
             "city": "Anytown",
-            "state": "MA",
-            "postal_code": "02101",
-            "country": "USA"
+            "state": "UK",
+            "post_code": "02101",
+            "country": "United Kingdom",
+            "country_code": "GB"
         }
     except Exception as e:
         logging.error(f"Unexpected error getting address: {e}")
         # Return a fallback address structure
         return {
             "address": "123 Main St",
+            "address_2": "",
             "city": "Anytown",
-            "state": "MA", 
-            "postal_code": "02101",
-            "country": "USA"
+            "state": "UK",
+            "post_code": "02101",
+            "country": "United Kingdom",
+            "country_code": "GB"
         }
 
 
@@ -574,30 +594,39 @@ def parse_fhir_message(
             else:
                 middle_name = None
 
-            # Create patient id array
-            hl7v2_id = []
-            hl7v2_id.append(create_patient_id(db=db))
+            # Create HL7v2_id from FHIR ID - this is the key fix
+            hl7v2_id = create_patient_id(db=db)
 
             # If true, reading from synthetic Fhir json generated using Synthea
             if require_address:
                 address_json = request_random_address()
-                address = address_json["address"]
-                address_2 = address_json["address_2"]
+                address = address_json["address"]  # Fixed key name
+                address_2 = address_json.get(
+                    "address_2", ""
+                )  # Handle missing address_2
                 city = address_json["city"]
+                state = address_json.get(
+                    "state", "UK"
+                )  # Extract state, default to "UK"
                 country = address_json["country"]
-                post_code = address_json["post_code"]
-                country_code = address_json["country_code"]
+                post_code = address_json["post_code"]  # Fixed key name
+                country_code = address_json.get(
+                    "country_code", "GB"
+                )  # Handle missing country_code
             else:
                 # Replace with appropriate location
                 # of info within UK patient in Fhir
                 # For now, remains the same
                 address_json = request_random_address()
                 address = address_json["address"]
-                address_2 = address_json["address_2"]
+                address_2 = address_json.get("address_2", "")
                 city = address_json["city"]
+                state = address_json.get(
+                    "state", "UK"
+                )  # Extract state, default to "UK"
                 country = address_json["country"]
                 post_code = address_json["post_code"]
-                country_code = address_json["country_code"]
+                country_code = address_json.get("country_code", "GB")
 
             patient_info = PatientInfo(
                 id=resource.id,
@@ -610,15 +639,14 @@ def parse_fhir_message(
                 address=address,
                 address_2=address_2,
                 city=city,
+                state=state,  # Pass state parameter
                 country=country,
                 post_code=post_code,
                 country_code=country_code,
                 age=age,
                 creation_date=date.today(),
-                # creation_date=datetime.date.today(),
+                hl7v2_id=hl7v2_id,  # Pass the created HL7v2 ID
             )
-            # break
-            # # Assuming there's only one patient resource per FHIR message
 
         if (isinstance(resource, Condition) and patient_info):
             patient_info = parse_fhir_conditions(resource, patient_info)
@@ -776,18 +804,20 @@ def firestore_doc_to_patient_info(
     if ("middle_name" in doc._data):
         middle_name = doc._data["middle_name"]
 
-    # Handle creation date -
-    # if patient doesn't have one, then assign today's date
+    # Handle creation date
     if ("creation_date" in doc._data):
         creation_date = doc._data["creation_date"]
     else:
         creation_date = date.today().isoformat()
-        creation_date = datetime.date.today().isoformat()
-    # Handle possible missing hl7v2_id
+
+    # Handle possible missing hl7v2_id - create one if missing
     if ("hl7v2_id" in doc._data):
         hl7v2_id = doc._data["hl7v2_id"]
     else:
         hl7v2_id = create_patient_id(db=db)
+
+    # Handle missing state field
+    state = doc._data.get("state", "UK")  # Default to UK if missing
 
     # Create patient_info object for further use
     patient_info = PatientInfo(
@@ -802,6 +832,7 @@ def firestore_doc_to_patient_info(
         address=doc._data["address"],
         address_2=doc._data["address_2"],
         city=doc._data["city"],
+        state=state,  # Add state field
         country=doc._data["country"],
         post_code=doc._data["post_code"],
         country_code=doc._data["country_code"],
@@ -902,7 +933,7 @@ def parse_HL7_message(msg):
 
             city = hl7.pid.pid_11.pid_11_3.to_er7()
             state = hl7.pid.pid_11.pid_11_4.to_er7()
-            postal_code = hl7.pid.pid_11.pid_11_5.to_er7()
+            post_code = hl7.pid.pid_11.pid_11_5.to_er7()
             country = hl7.pid.pid_11.pid_11_6.to_er7()
 
             print("Got patient locations")
@@ -923,7 +954,7 @@ def parse_HL7_message(msg):
                 city=city,
                 state=state,
                 country=country,
-                postal_code=postal_code,
+                post_code=post_code,
                 age=age,
                 creation_date=creation_date
             )
@@ -946,83 +977,29 @@ def get_firestore_age_range(
         peter_pan: bool
 ) -> list[PatientInfo]:
     """
-    Pull patient information from Firestore
-    , given an age range. If not enough patients exist in the firestore,
-    they will be generated using poll_synthea and the HL7 processor.
-
-    If peter_pan is set to true,
-    patients will have their DOBs changed
-    to match their age at time of creation.
-    If false, their age will be updated using their DOB.
-
-    Returns a list of patients.
+    Pull patient information from Firestore, given an age range.
+    If not enough patients exist, return what's available and
+    let the caller handle patient generation.
     """
-
     patients = []
-    uploaded_patients = []
 
-    while (len(patients) == 0):
-        count, query = count_patient_records(db, lower, upper, peter_pan)
+    count, query = count_patient_records(db, lower, upper, peter_pan)
 
-        # If there are enough patients...
-        if (count >= num_of_patients):
+    if count >= num_of_patients:
+        docs = query.limit(num_of_patients).stream()
 
-            docs = query.limit(num_of_patients).stream()
+        for doc in docs:
+            patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
 
-            # Stream the patient docs
-            for doc in docs:
-                patient_info = firestore_doc_to_patient_info(db=db, doc=doc)
+            if peter_pan:
+                patient_info = update_retrieved_patient_dob(
+                    patient_info=patient_info)
+            else:
+                patient_info = update_retrieved_patient_age(
+                    patient_info=patient_info)
+            patients.append(patient_info)
 
-                # Matches age with dob -
-                # method for doing so depends on the peter_pan bool
-                if peter_pan:
-                    patient_info = update_retrieved_patient_dob(
-                        patient_info=patient_info)
-                else:
-                    patient_info = update_retrieved_patient_age(
-                        patient_info=patient_info)
-
-                patients.append(patient_info)
-
-            # Return a list of patients
-            return patients
-
-        else:
-            print(
-                f"Database only has {count} matching patient(s) "
-                " - generating new patients...")
-            info = {
-                "number_of_patients": int(num_of_patients - count),
-                "age_from": lower,
-                "age_to": upper,
-                "sex": "F"
-            }
-
-            # Generate patients using poll_synthea
-            call_for_patients(info=info)
-
-            # Iterate through FHIR JSON files in the work folder
-            for file in work_folder_path.glob("*.json"):
-                if file.name not in uploaded_patients:
-                    try:
-                        with open(file, "r") as f:
-                            fhir_message = f.read()
-
-                            # Parse patient information from file
-                            patient_info = parse_fhir_message(fhir_message)
-                            save_to_firestore(db=db, patient_info=patient_info)
-                            uploaded_patients.append(file.name)
-
-                    except UnicodeDecodeError as e:
-                        print("Problem reading file...")
-                        print(e)
-                    except Exception as e:
-                        print(
-                            "Couldn't parse patient information from "
-                            "fhir message..."
-                        )
-                        print(f"Exception: {e}")
-                        time.sleep(3)
+    return patients, count  # Return both patients and count
 
 
 def update_retrieved_patient_dob(patient_info: PatientInfo, ) -> PatientInfo:
@@ -1108,37 +1085,22 @@ def count_patient_records(
     peter_pan: bool
 ) -> tuple[int | float, any]:
     """
-    Counts the number of patient records
-    that match the age requirements specified.
-
-    Returns both the count of the patients in the db,
-      and the query used in the check.
+    Counts the number of patient records that match the age requirements.
     """
-
-    # Form the query based on peter_pan bool
+    # Use full_fhir collection consistently
     if peter_pan:
-
-        # We can simply collect patients using
-        #  'age', as will be changing their dob to match
-        query = db.collection(
-            "full_fhir").where(
-                filter=FieldFilter("age", "<=", upper))\
+        query = (
+            db.collection("full_fhir")
+            .where(filter=FieldFilter("age", "<=", upper))
             .where(filter=FieldFilter("age", ">=", lower))
+        )
     else:
-
-        # We need to calculate the appropriate dob ranges;
-        #  we can't search by age as we will change this
         current_date = date.today()
-
-        # If they are X years old today,
-        # their DOB will fall between these ranges
         lower_year = current_date.year - lower
         upper_dob = current_date.replace(year=lower_year)
-
         upper_year = current_date.year - upper
         lower_dob = current_date.replace(year=upper_year)
 
-        # Find all records between the two valid DOBs
         query = db.collection("full_fhir").where(
             filter=FieldFilter(
                 "birth_date", "<=", upper_dob.isoformat()
@@ -1150,11 +1112,7 @@ def count_patient_records(
                 )
 
     aggregate_query = aggregation.AggregationQuery(query)
-
-    # `alias` to provides a key for accessing the aggregate query results
     aggregate_query.count(alias="all")
-
-    # Get the number of patient records which fit the criteria
     results = aggregate_query.get()
     count = results[0][0].value
 
@@ -1163,30 +1121,25 @@ def count_patient_records(
 
 def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
     """
-    Save patient info to Firestore if the patient does not already exist
-    in the database - this is checked using their ID.
-
-    Args:
-    - db: ``firestore.client``, an initialised firestore client
-    - patient_info: ``PatientInfo``, a PatientInfo object
-
-    Returns:
-    - ``None``
+    Save patient info to Firestore using the full_fhir collection structure
     """
-
     try:
         patient_id = patient_info.id
         patient_ref = db.collection("full_fhir").document(patient_id)
+
         if patient_ref.get().exists:
             print(
-                f"Patient with ID {patient_id} already "
-                " exists in Firestore. Skipping."
+                f"Patient with ID {patient_id} already exists in Firestore. "
+                "Skipping."
             )
         else:
-
+            # Match the field structure from your examples
             patient_data = {
                 "id": patient_info.id,
-                "hl7v2_id": create_patient_id(db=db),
+                "hl7v2_id": (
+                    [patient_info.hl7v2_id]
+                    if patient_info.hl7v2_id else []
+                ),  # Array format
                 "birth_date": patient_info.birth_date.isoformat(),
                 "gender": patient_info.gender,
                 "ssn": patient_info.ssn,
@@ -1196,27 +1149,67 @@ def save_to_firestore(db: firestore.client, patient_info: PatientInfo) -> None:
                 "address": patient_info.address,
                 "address_2": patient_info.address_2,
                 "city": patient_info.city,
+                "state": patient_info.state,
                 "country": patient_info.country,
                 "post_code": patient_info.post_code,
+                # Use post_code not postal_code
                 "country_code": patient_info.country_code,
                 "age": patient_info.age,
                 "creation_date": patient_info.creation_date.isoformat(),
             }
 
-            if hasattr(patient_info, 'conditions'):
+            # Add conditions array if they exist
+            if hasattr(patient_info, 'conditions') and patient_info.conditions:
                 conditions = []
                 for condition in patient_info.conditions:
-                    conditions.append(condition.__dict__)
+                    condition_dict = {
+                        "condition": condition.condition,
+                        "clinical_status": condition.clinical_status,
+                        "verification_status": condition.verification_status,
+                        "onset_date_time": condition.onset_date_time,
+                        "recorded_date": condition.recorded_date,
+                        "abatement_time": condition.abatement_time,
+                        "encounter_reference": condition.encounter_reference,
+                        "subject_reference": condition.subject_reference,
+                        "snomed_code": condition.snomed_code
+                    }
+                    conditions.append(condition_dict)
                 patient_data["conditions"] = conditions
 
-            if hasattr(patient_info, 'observations'):
+            # Add observations array if they exist
+            if (
+                hasattr(patient_info, 'observations')
+                and patient_info.observations
+            ):
                 observations = []
-                for observation in patient_info.observations:
-                    observations.append(observation.__dict__)
+                for obs in patient_info.observations:
+                    obs_dict = {
+                        "category": obs.category,
+                        "observation": obs.observation,
+                        "status": obs.status,
+                        "effective_date_time": obs.effective_date_time,
+                        "issued": obs.issued,
+                        "value_quantity": obs.value_quantity,
+                        "value_codeable_concept": obs.value_codeable_concept,
+                        "encounter_reference": obs.encounter_reference,
+                        "subject_reference": obs.subject_reference,
+                        "component": obs.component,
+                        # Add the additional fields from your examples
+                        "filler_order_number": getattr(
+                            obs, 'filler_order_number',
+                            None
+                        ),
+                        "placer_order_number": getattr(
+                            obs,
+                            'placer_order_number',
+                            None
+                        ),
+                    }
+                    observations.append(obs_dict)
                 patient_data["observations"] = observations
-
             patient_ref.set(patient_data)
-            print(f"Added patient with ID {patient_id} to Firestore.")
+            print(f"Added patient with ID {patient_id} to Firestore "
+                  f"(full_fhir collection).")
 
     except Exception as e:
-        print('Failed to upload to Firestore: %s', repr(e))
+        print(f'Failed to upload to Firestore: {repr(e)}')
