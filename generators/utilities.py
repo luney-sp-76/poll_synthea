@@ -16,10 +16,19 @@ from google.cloud.firestore_v1 import aggregation
 from poll_synthea import call_for_patients
 from hl7apy.parser import parse_message
 import requests
+import urllib3
+import logging
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
 hl7_folder_path = BASE_DIR / "HL7_v2"
+
+# Disable SSL verification warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Create a global session with SSL verification disabled
+_session = requests.Session()
+_session.verify = False
 
 
 # generate a random time for the OBR segment
@@ -479,20 +488,41 @@ def calculate_age(birth_date):
     )
     return age
 
+
 # Get random address from mockeroo API
-
-
 def request_random_address():
     """
-    Requests a random address from a mockeroo API.
-
-    Will require error checks to ensure address
-    is reachable and the API responds as expected.
+    Requests a random address from the Mockaroo API
+    Returns a JSON object containing address information
     """
-    response = requests.get(
-        "https://my.api.mockaroo.com/address.json?key=d995a340")
-
-    return response.json()
+    try:
+        response = _session.get(
+            "https://my.api.mockaroo.com/address.json?key=c5668b10",
+            timeout=30
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to get random address from Mockaroo: {e}")
+        # Return fallback address
+        return {
+            "address": "123 Main St",
+            "address_2": "Apt 4B",
+            "city": "Anytown",
+            "state": "MA",
+            "postal_code": "02101",
+            "country": "USA"
+        }
+    except Exception as e:
+        logging.error(f"Unexpected error getting address: {e}")
+        # Return a fallback address structure
+        return {
+            "address": "123 Main St",
+            "city": "Anytown",
+            "state": "MA", 
+            "postal_code": "02101",
+            "country": "USA"
+        }
 
 
 # TODO update the dobs after the sample patients are created -

@@ -8,6 +8,13 @@ import traceback
 import firebase_admin
 from firebase_admin import credentials, firestore
 from pathlib import Path
+from segments import create_msh
+# from create_msh import create_msh
+from segments import create_pid
+from segments import create_orc
+from segments import create_obr
+from segments import create_evn
+from segments import create_pv1
 from generators.utilities import (
     create_control_id,
     create_filler_order_num,
@@ -18,13 +25,13 @@ from generators.utilities import (
     assign_age_to_patient
 )
 from hl7apy import core
-from segments.create_pid import create_pid
-from segments.create_obr import create_obr
-from segments.create_orc import create_orc
-from segments.create_msh import create_msh
-from segments.create_evn import create_evn
-from segments.create_pv1 import create_pv1
+import requests
+import urllib3
 # from pathlib import Path
+
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_DIR = Path.cwd()
 work_folder_path = BASE_DIR / "Work"
@@ -147,47 +154,110 @@ class HL7MessageProcessor:
                 self.messageType = "ADT_A01"
             elif messageType == "3":
                 self.messageType = "ORM_O01"
-        try:
-            # Iterate through FHIR JSON files in the work folder
-            for file in work_folder_path.glob("*.json"):
-                with open(file, "r") as f:
-                    fhir_message = f.read()
-        except Exception as e:
-            logging.error(f"Error reading FHIR JSON files: {e}")
-            logging.error(traceback.format_exc())
+            else:
+                logging.error(f"Invalid message type selected: {messageType}")
+                print("Invalid selection. Please choose 1, 2, or 3.")
+                return
 
-            # At this point, parse the FHIR message and process it
+        processed_count = 0
+        error_count = 0
+
+        # Iterate through FHIR JSON files in the work folder
+        for file in work_folder_path.glob("*.json"):
             try:
-                if fhir_message is None:
-                    raise ValueError(
-                        "FHIR message is None. Check the file path."
-                    )
-                patient_info = parse_fhir_message(fhir_message)
-                hl7_message = None
-                if self.messageType == "ADT_A01":
-                    hl7_message = create_adt_message(
-                        patient_info, self.messageType
-                    )
-                elif self.messageType == "ORM_O01":
-                    hl7_message = create_orm_message(
-                        patient_info, self.messageType
-                    )
-                elif self.messageType == "ORU_R01":
-                    hl7_message = create_oru_message(
-                        patient_info, self.messageType
-                    )
-                if hl7_message:
-                    self.save_hl7_message_to_file(hl7_message, patient_info.id)
-                    # Optionally, upload patient info to Firestore
-                    # self.db.collection("patients").document(patient_info.id).set(patient_info.__dict__)
+                print(f"Processing file: {file.name}")
+                with open(file, "r") as f:
+                    fhir_content = f.read()
+
+                # Handle multiple FHIR messages in a single file
+                # Check if the content contains multiple JSON objects
+                fhir_messages = []
+
+                # Try to parse as single JSON object first
+                try:
+                    import json
+                    # If it's a single JSON object
+                    json.loads(fhir_content)
+                    fhir_messages.append(fhir_content)
+                except json.JSONDecodeError:
+                    # If single JSON parsing fails, try to split by lines/objects
+                    # This handles NDJSON format (newline-delimited JSON)
+                    lines = fhir_content.strip().split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line:
+                            try:
+                                json.loads(line)  # Validate JSON
+                                fhir_messages.append(line)
+                            except json.JSONDecodeError:
+                                logging.warning(
+                                    f"Skipping invalid JSON line in {file.name}: {line[:100]}...")
+
+                # Process each FHIR message
+                for i, fhir_message in enumerate(fhir_messages):
+                    try:
+                        if not fhir_message or fhir_message.isspace():
+                            logging.warning(
+                                f"Empty FHIR message in {file.name}, message {i+1}")
+                            continue
+
+                        # Fix: Pass the required parameters
+                        # to parse_fhir_message
+                        patient_info = parse_fhir_message(
+                            self.db, fhir_message)
+
+                        hl7_message = None
+
+                        if self.messageType == "ADT_A01":
+                            hl7_message = create_adt_message(
+                                patient_info, self.messageType)
+                        elif self.messageType == "ORM_O01":
+                            hl7_message = create_orm_message(
+                                patient_info, self.messageType)
+                        elif self.messageType == "ORU_R01":
+                            hl7_message = create_oru_message(
+                                patient_info, self.messageType)
+
+                        if hl7_message:
+                            # Create unique filename for multiple messages
+                            #  from same file
+                            if len(fhir_messages) > 1:
+                                filename_suffix = f"_{i+1}"
+                            else:
+                                filename_suffix = ""
+
+                            patient_id_with_suffix = f"{patient_info.id}{filename_suffix}"
+                            self.save_hl7_message_to_file(
+                                hl7_message, patient_id_with_suffix)
+                            processed_count += 1
+                            print(
+                                f"Successfully created HL7 message for patient: {patient_id_with_suffix}")
+
+                            # Optionally, upload patient info to Firestore
+                            # self.db.collection("patients").document(patient_info.id).set(patient_info.__dict__)
+                        else:
+                            logging.error(
+                                f"Failed to create HL7 message for patient in {file.name}, message {i+1}")
+                            error_count += 1
+
+                    except Exception as e:
+                        logging.error(
+                            f"Error processing FHIR message {i+1} in {file.name}: {e}")
+                        logging.error(traceback.format_exc())
+                        error_count += 1
+
             except Exception as e:
-                logging.error(
-                    (
-                        f"An error of type {type(e).__name__} occurred. "
-                        f"Arguments:\n{e.args}"
-                    )
-                )
+                logging.error(f"Error reading file {file.name}: {e}")
                 logging.error(traceback.format_exc())
+                error_count += 1
+
+        print("\nProcessing complete:")
+        print(f"- Successfully processed: {processed_count} messages")
+        print(f"- Errors encountered: {error_count} messages")
+
+        if processed_count == 0:
+            print("No HL7 messages were created. Check the logs for errors.")
+            print(f"Make sure FHIR JSON files exist in: {work_folder_path}")
 
     def save_hl7_message_to_file(self, hl7_message, patient_id):
         hl7_file_path = self.hl7_folder_path / f"{patient_id}.hl7"
@@ -223,7 +293,7 @@ def produce_ADT_A01_from_firestore(
         lower: int,
         upper: int,
         peter_pan: bool
-        ) -> bool:
+) -> bool:
     """
     Produces an ADT_A01 message
     for each patient record retrieved from firestore.
@@ -259,7 +329,7 @@ def produce_OML_O21_from_firestore(
         num_of_patients: int,
         age: int,
         assign_age: bool
-        ) -> bool:
+) -> bool:
     """
     Produces an OML_O21 message
     for each patient record retrieved from firestore.
@@ -275,7 +345,7 @@ def produce_OML_O21_from_firestore(
             lower=1,
             upper=100,
             peter_pan=True
-            )
+        )
         for i, patient in enumerate(patients):
             patient = assign_age_to_patient(
                 patient_info=patient, desired_age=age, index=i)
@@ -296,17 +366,66 @@ def produce_OML_O21_from_firestore(
     return hl7_messages
 
 
+def test_mockaroo_connection():
+    """Test connection to Mockaroo API for address data WITHOUT SSL verification"""
+    try:
+        # Skip SSL certificate verification entirely
+        response = requests.get(
+            'https://my.api.mockaroo.com/address.json?key=c5668b10',
+            verify=False,  # Disable SSL verification
+            timeout=30
+        )
+        response.raise_for_status()
+        logging.info(f"Mockaroo API test successful (no SSL verification): {response.status_code}")
+        print(f"Mockaroo API test successful: {response.status_code}")
+        return response.json()
+    except Exception as error:
+        logging.error(f"Mockaroo API test failed: {error}")
+        print(f"Mockaroo API test failed: {error}")
+        return None
+
+
 if __name__ == "__main__":
-    logging.basicConfig(filename="main.log", level=logging.INFO)
-    import poll_synthea
+    # Clear any existing log file and configure logging properly
+    log_file = Path("main.log")
+    if log_file.exists():
+        log_file.unlink()
+    
+    logging.basicConfig(
+        filename="main.log", 
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        filemode='w'
+    )
+    
+    try:
+        import poll_synthea
+        poll_synthea.call_for_patients()
 
-    poll_synthea.call_for_patients()
+        # Create an instance of HL7MessageProcessor and call its 'main' method
+        hl7_folder = hl7_folder_path
+        logging.info(f"HL7 folder path: {hl7_folder}")
+        if not hl7_folder.exists():
+            hl7_folder.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Created HL7 folder at: {hl7_folder}")
+        
+        processor = HL7MessageProcessor(hl7_folder)
+        if processor.db is None:
+            processor.db = initialize_firestore()
+        processor.main()
 
-    # Create an instance of HL7MessageProcessor and call its 'main' method
-    hl7_folder = hl7_folder_path  # Make sure this path is correct
-    logging.info(f"HL7 folder path: {hl7_folder}")
-    if not hl7_folder.exists():
-        hl7_folder.mkdir(parents=True, exist_ok=True)
-        logging.info(f"Created HL7 folder at: {hl7_folder}")
-    processor = HL7MessageProcessor(hl7_folder)
-    processor.main()
+        # Test Mockaroo connection without SSL verification
+        print("Testing Mockaroo API connection (no SSL verification)...")
+        logging.info("Testing Mockaroo API connection (no SSL verification)...")
+        mockaroo_data = test_mockaroo_connection()
+        if mockaroo_data:
+            logging.info("Mockaroo API is accessible")
+            print("Mockaroo API is accessible")
+        else:
+            logging.warning("Mockaroo API is not accessible - continuing without it")
+            print("Mockaroo API is not accessible - continuing without it")
+            
+    except Exception as main_error:
+        logging.error(f"Main execution failed: {main_error}")
+        logging.error(traceback.format_exc())
+        print(f"Application failed: {main_error}")
